@@ -25,7 +25,7 @@ def Neural_Sim(self, input, output):
     else:
         weight_q = wage_quantizer.Q(self.weight,self.wl_weight)
     write_matrix_weight( weight_q.cpu().data.numpy(),weight_file_name)
-    # print('wl_input = {}'.format(self.wl_input))
+    # print('hook.py: input.len: ', len(input))
     if len(self.weight.shape) > 2:
         k=self.weight.shape[-1]
         write_matrix_activation_conv(stretch_input(input[0].cpu().data.numpy(),k),None,self.wl_input,input_file_name)
@@ -58,7 +58,7 @@ def write_matrix_activation_conv(input_matrix,fill_dimension,length,filename):
     filled_matrix_int32 = filled_matrix_b.astype(np.int32)
     activity = np.sum(filled_matrix_int32, axis=None)/np.size(filled_matrix_int32)
     # arr_int = arr_u1.astype(np.int32)
-    # np.save(filename, filled_matrix_int32)
+    np.save(filename, filled_matrix_int32)
     # np.savetxt(filename, filled_matrix_b, delimiter=",",fmt='%s')
     return activity
 
@@ -89,26 +89,49 @@ def write_matrix_activation_fc(input_matrix,fill_dimension,length,filename):
     filled_matrix_int32 = filled_matrix_b.astype(np.int32)
     activity = np.sum(filled_matrix_int32, axis=None)/np.size(filled_matrix_int32)
     # np.savetxt(filename, filled_matrix_b, delimiter=",",fmt='%s')
-    # np.save(filename, filled_matrix_int32)
+    np.save(filename, filled_matrix_int32)
     return activity
 
 def stretch_input(input_matrix,window_size = 5): # no padding?
-    # print('input_matrix\'s shape')
     
+
+    # without padding
+    # input_shape = input_matrix.shape
+    # item_num = (input_shape[2] - window_size + 1) * (input_shape[3]-window_size + 1)
+    # output_matrix = np.zeros((input_shape[0],item_num,input_shape[1]*window_size*window_size))
+    # iter = 0
+    # for i in range( input_shape[2]-window_size + 1 ):
+    #     for j in range( input_shape[3]-window_size + 1 ):
+    #         for b in range(input_shape[0]):
+    #             output_matrix[b,iter,:] = input_matrix[b, :, i:i+window_size,j: j+window_size].reshape(input_shape[1]*window_size*window_size)
+    #         iter += 1
+    # # print('output_matrix\'s shape')
+    # print("\ninput_matrix.shape: ", input_matrix.shape)
+    # print("\nafter stretch: ", output_matrix.shape)
+    # return output_matrix
+
+    # add padding to input stretching
+
     input_shape = input_matrix.shape
-    item_num = (input_shape[2] - window_size + 1) * (input_shape[3]-window_size + 1)
-    output_matrix = np.zeros((input_shape[0],item_num,input_shape[1]*window_size*window_size))
+    # print('\ninput_matrix\'s shape')
+    
+    input_matrix_padded = np.zeros((input_shape[0], input_shape[1], input_shape[2]+2, input_shape[3]+2)) # default padding is 1
+    input_matrix_padded[:,:,1:input_shape[2]+1,1:input_shape[3]+1] = input_matrix
+    input_shape_padded = input_matrix_padded.shape
+    item_num = (input_shape_padded[2] - window_size + 1) * (input_shape_padded[3]-window_size + 1)
+    # eg. pad the 32x32 feature map to 34x34, with original matrix in central
+    output_matrix = np.zeros((input_shape_padded[0],item_num,input_shape_padded[1]*window_size*window_size))
     iter = 0
-    for i in range( input_shape[2]-window_size + 1 ):
-        for j in range( input_shape[3]-window_size + 1 ):
-            for b in range(input_shape[0]):
-                output_matrix[b,iter,:] = input_matrix[b, :, i:i+window_size,j: j+window_size].reshape(input_shape[1]*window_size*window_size)
+    for i in range( input_shape_padded[2]-window_size + 1 ):
+        for j in range( input_shape_padded[3]-window_size + 1 ):
+            for b in range(input_shape_padded[0]):
+                output_matrix[b,iter,:] = input_matrix_padded[b, :, i:i+window_size,j: j+window_size].reshape(input_shape_padded[1]*window_size*window_size)
             iter += 1
     # print('output_matrix\'s shape')
     print("\ninput_matrix.shape: ", input_matrix.shape)
-    print("\nafter stretch: ", output_matrix.shape)
+    print("after stretch: ", output_matrix.shape)
+    print('\n')
     return output_matrix
-
 
 def dec2bin(x,n):
     y = x.copy()
