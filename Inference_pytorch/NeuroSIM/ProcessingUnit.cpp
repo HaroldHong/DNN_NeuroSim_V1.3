@@ -302,7 +302,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 				for (int j=0; j<ceil((double) weightMatrixCol/(double) param->numColSubArray); j++) {
 					int numRowMatrix = min(param->numRowSubArray, weightMatrixRow-i*param->numRowSubArray);
 					int numColMatrix = min(param->numColSubArray, weightMatrixCol-j*param->numColSubArray);
-					
+					cout << endl << "Processingunit.cpp numRowMatrix = " << numRowMatrix << ", weightMatrixRow = " << weightMatrixRow << endl;
 					if ((i*param->numRowSubArray < weightMatrixRow) && (j*param->numColSubArray < weightMatrixCol) && (i*param->numRowSubArray < weightMatrixRow) ) {
 						// assign weight and input to specific subArray
 						vector<vector<double> > subArrayMemory;
@@ -319,6 +319,9 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 							double activityRowRead = 0;
 							vector<double> input; 
 							input = GetInputVector(subArrayInput, k, &activityRowRead);
+
+							cout << endl << "inputVector.size() = " << inputVector.size() << " inputVector[0].size() = " <<inputVector[0].size() << " numInVector = " << numInVector << " subArrayInput.size() = " << subArrayInput.size() << " subArrayInput[0].size() = " << subArrayInput[0].size();
+							cout << "input.size() = " << input.size()<< endl;
 							subArray->activityRowRead = activityRowRead;
 							
 							int cellRange = pow(2, param->cellBit);
@@ -394,6 +397,9 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 				double activityRowRead = 0;
 				vector<double> input;
 				input = GetInputVector(subArrayInput, k, &activityRowRead);
+
+				cout << endl << "inputVector.size() = " << inputVector.size() << " inputVector[0].size() = " <<inputVector[0].size() << " numInVector = " << numInVector << " subArrayInput.size() = " << subArrayInput.size() << " subArrayInput[0].size() = " << subArrayInput[0].size();
+				cout << "input.size() = " << input.size()<< endl;
 				subArray->activityRowRead = activityRowRead;
 				int cellRange = pow(2, param->cellBit);
 				
@@ -440,6 +446,7 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 				if ((i*param->numRowSubArray < weightMatrixRow) && (j*param->numColSubArray < weightMatrixCol) && (i*param->numRowSubArray < weightMatrixRow) ) {
 					int numRowMatrix = min(param->numRowSubArray, weightMatrixRow-i*param->numRowSubArray);
 					int numColMatrix = min(param->numColSubArray, weightMatrixCol-j*param->numColSubArray);
+					cout << endl << "Processingunit.cpp numRowMatrix = " << numRowMatrix << ", weightMatrixRow = " << weightMatrixRow << endl;
 					// assign weight and input to specific subArray
 					vector<vector<double> > subArrayMemory;
 					subArrayMemory = CopySubArray(newMemory, i*param->numRowSubArray, j*param->numColSubArray, numRowMatrix, numColMatrix);
@@ -455,6 +462,9 @@ double ProcessingUnitCalculatePerformance(SubArray *subArray, const vector<vecto
 						double activityRowRead = 0;
 						vector<double> input;
 						input = GetInputVector(subArrayInput, k, &activityRowRead);
+						
+						cout << endl << "inputVector.size() = " << inputVector.size() << " inputVector[0].size() = " <<inputVector[0].size() << " numInVector = " << numInVector << " subArrayInput.size() = " << subArrayInput.size() << " subArrayInput[0].size() = " << subArrayInput[0].size();
+						cout << "input.size() = " << input.size()<< endl;
 						subArray->activityRowRead = activityRowRead;
 						
 						int cellRange = pow(2, param->cellBit);

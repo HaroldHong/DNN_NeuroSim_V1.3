@@ -255,10 +255,11 @@ int main(int argc, char * argv[]) {
 	}
 
 	cout << "-------------------------------------- Hardware Performance --------------------------------------" <<  endl;	
+	int start_layer = 2;
 	if (! param->pipeline) {
 		// layer-by-layer process
 		// show the detailed hardware performance for each layer
-		for (int i=0; i<netStructure.size(); i++) {
+		for (int i=start_layer; i<netStructure.size(); i++) {
 			cout << "-------------------- Estimation of Layer " << i+1 << " ----------------------" << endl;
 
 			ChipCalculatePerformance(inputParameter, tech, cell, i, argv[2*i+4], argv[2*i+4], argv[2*i+5], netStructure[i][6],
@@ -277,7 +278,7 @@ int main(int argc, char * argv[]) {
 			
 			double numTileOtherLayer = 0;
 			double layerLeakageEnergy = 0;		
-			for (int j=0; j<netStructure.size(); j++) {
+			for (int j=start_layer; j<netStructure.size(); j++) {
 				if (j != i) {
 					numTileOtherLayer += numTileEachLayer[0][j] * numTileEachLayer[1][j];
 				}

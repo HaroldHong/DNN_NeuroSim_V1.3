@@ -27,6 +27,7 @@ class VGG(nn.Module):
 def make_layers(cfg, args, logger ):
     layers = []
     in_channels = 3
+    layer_Conv = 0
     for i, v in enumerate(cfg):
         if v[0] == 'M':
             layers += [nn.MaxPool2d(kernel_size=v[1], stride=v[2])]
@@ -41,7 +42,7 @@ def make_layers(cfg, args, logger ):
                                  logger=logger,wl_input = args.wl_activate,wl_activate=args.wl_activate,
                                  wl_error=args.wl_error,wl_weight= args.wl_weight,inference=args.inference,onoffratio=args.onoffratio,cellBit=args.cellBit,
                                  subArray=args.subArray,ADCprecision=args.ADCprecision,vari=args.vari,t=args.t,v=args.v,detect=args.detect,target=args.target,
-                                 name = 'Conv'+str(i)+'_', model = args.model)
+                                 name = 'Conv'+str(i)+'_', model = args.model, layer_Conv = layer_Conv)
             elif args.mode == "FP":
                 conv2d = FConv2d(in_channels, out_channels, kernel_size=v[2], padding=padding,
                                  logger=logger,wl_input = args.wl_activate,wl_weight= args.wl_weight,inference=args.inference,onoffratio=args.onoffratio,cellBit=args.cellBit,
@@ -50,6 +51,7 @@ def make_layers(cfg, args, logger ):
             non_linearity_activation =  nn.ReLU()
             layers += [conv2d, non_linearity_activation]
             in_channels = out_channels
+            layer_Conv += 1
         if v[0] == 'L':
             if args.mode == "WAGE":
                 linear = QLinear(in_features=v[1], out_features=v[2], 

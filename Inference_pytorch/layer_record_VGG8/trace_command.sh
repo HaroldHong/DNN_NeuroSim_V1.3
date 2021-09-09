@@ -1,0 +1,1 @@
+./NeuroSIM/main ./NeuroSIM/NetWork_VGG8.csv 8 8 ./layer_record_VGG8/weightConv0_.csv ./layer_record_VGG8/input_2/inputConv0__FP.npy ./layer_record_VGG8/weightConv1_.csv ./layer_record_VGG8/input_2/inputConv1__FP.npy 

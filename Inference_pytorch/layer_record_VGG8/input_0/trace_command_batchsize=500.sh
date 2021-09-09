@@ -1,0 +1,1 @@
+./NeuroSIM/main ./NeuroSIM/NetWork_VGG8.csv 4 8 

@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.tcc": "cpp",
+        "random": "cpp",
+        "cmath": "cpp",
+        "iostream": "cpp",
+        "ostream": "cpp"
+    },
+    "python.pythonPath": "/Users/hsh/opt/anaconda3/bin/python"
+}

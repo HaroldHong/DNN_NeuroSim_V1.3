@@ -85,10 +85,12 @@ void MultilevelSAEncoder::CalculateArea(double _newHeight, double _newWidth, Are
 		CalculateGateArea(INV, 1, widthInvN, widthInvP, tech.featureSize * MAX_TRANSISTOR_HEIGHT, tech, &hInv, &wInv);
 		// Large NAND in Encoder
 		CalculateGateArea(NAND, numInput, widthNandN, widthNandP, tech.featureSize * MAX_TRANSISTOR_HEIGHT, tech, &hNandLg, &wNandLg);
-		
+		cout << endl << "_newHeight = " << _newHeight << ", _newWidth = " << _newWidth << endl;
+		cout << "wInv  = " << wInv << ", wNand = " << wNand << ", wNandLg = " << wNandLg << endl;
+		cout << "numLevel = " << numLevel << ", hInv = " << hInv << ", hNand = " << hNand << endl;
 		wEncoder = 2*wInv + wNand + wNandLg;
 		hEncoder = max( (numLevel-1)*hInv, (numLevel-1)*hNand );
-	    
+	    cout << "wEncoder = " << wEncoder << ", hEncoder = " << hEncoder << endl;
 		if (_newWidth && _option==NONE) {
 			int numEncoderPerRow = (int)ceil(_newWidth/wEncoder);
 			if (numEncoderPerRow > numEncoder) {
@@ -107,7 +109,7 @@ void MultilevelSAEncoder::CalculateArea(double _newHeight, double _newWidth, Are
 			width = wEncoder*numColEncoder;
 		}
 		area = height * width;
-		
+		cout << "height = " << height << ", width = " << width << endl << endl;
 		// Modify layout
 		newHeight = _newHeight;
 		newWidth = _newWidth;
@@ -153,28 +155,28 @@ void MultilevelSAEncoder::CalculateLatency(double _rampInput, double numRead){
 		gm = CalculateTransconductance(widthNandN, NMOS, tech);
 		beta = 1 / (resPullDown * gm);
 		readLatency += horowitz(tr, beta, ramp[0], &ramp[1]);
-		
+		cout << endl << "In MultilevelSAEncoder.cpp" << endl;
+		cout << "readLatency1 = " << readLatency << endl;
 		// 2nd NAND2 to Large NAND
 		resPullUp = CalculateOnResistance(widthNandP, PMOS, inputParameter.temperature, tech);
 		tr = resPullUp * (capNandOutput + capNandLgInput * numInput);
 		gm = CalculateTransconductance(widthNandP, PMOS, tech);
 		beta = 1 / (resPullUp * gm);
 		readLatency += horowitz(tr, beta, ramp[1], &ramp[2]);
-		
+		cout << "readLatency2 = " << readLatency << endl;
 		// 3rd large NAND to INV
 		resPullDown = CalculateOnResistance(widthNandN, NMOS, inputParameter.temperature, tech) * 2;
 		tr = resPullDown * (capNandLgOutput + capInvInput);
 		gm = CalculateTransconductance(widthNandN, NMOS, tech);
 		beta = 1 / (resPullDown * gm);
 		readLatencyIntermediate += horowitz(tr, beta, ramp[2], &ramp[3]);
-
 		// 4th INV
 		resPullUp = CalculateOnResistance(widthInvP, PMOS, inputParameter.temperature, tech);
 		tr = resPullUp * capInvOutput;
 		gm = CalculateTransconductance(widthNandP, PMOS, tech);
 		beta = 1 / (resPullUp * gm);
 		readLatencyIntermediate += horowitz(tr, beta, ramp[3], &ramp[4]);
-		
+		cout << "readLatency3 = " << readLatency << endl;
 		readLatency *= numRead;
 		rampOutput = ramp[4];
 	}
