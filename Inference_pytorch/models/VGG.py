@@ -1,21 +1,19 @@
 from utee import misc
 print = misc.logger.info
 import torch.nn as nn
-from modules.quantization_cpu_np_infer import QConv2d,  QLinear
+from modules.quantization_cpu_np_infer import QConv2d, QConv2d_T,  QLinear
 from modules.floatrange_cpu_np_infer import FConv2d, FLinear
 import torch
+import pandas as pd
 
 class VGG(nn.Module):
-    def __init__(self, args, features, num_classes,logger):
+    def __init__(self, args, features, indexs_high_t_range, temperatures_images, num_classes,logger):
         super(VGG, self).__init__()
         assert isinstance(features, nn.Sequential), type(features)
         self.features = features
         self.classifier = make_layers([('L', 8192, 1024),
                                        ('L', 1024, num_classes)], 
-                                       args, logger)
-
-        # print(self.features)
-        # print(self.classifier)
+                                       args, logger, indexs_high_t_range, temperatures_images)
 
     def forward(self, x):
         x = self.features(x)
@@ -23,8 +21,9 @@ class VGG(nn.Module):
         x = self.classifier(x)
         return x
 
+    
 
-def make_layers(cfg, args, logger ):
+def make_layers(cfg, args, logger,indexs_high_t_range, temperatures_images):
     layers = []
     in_channels = 3
     layer_Conv = 0
@@ -38,11 +37,17 @@ def make_layers(cfg, args, logger ):
             else:
                 padding = 0
             if args.mode == "WAGE":
-                conv2d = QConv2d(in_channels, out_channels, kernel_size=v[2], padding=padding,
+                # conv2d = QConv2d(in_channels, out_channels, kernel_size=v[2], padding=padding,
+                #                  logger=logger,wl_input = args.wl_activate,wl_activate=args.wl_activate,
+                #                  wl_error=args.wl_error,wl_weight= args.wl_weight,inference=args.inference,onoffratio=args.onoffratio,cellBit=args.cellBit,
+                #                  subArray=args.subArray,ADCprecision=args.ADCprecision,vari=args.vari,t=args.t,v=args.v,detect=args.detect,target=args.target,
+                #                  name = 'Conv'+str(i)+'_', model = args.model, layer_Conv = layer_Conv)
+                
+                conv2d = QConv2d_T(in_channels, out_channels, kernel_size=v[2], padding=padding,
                                  logger=logger,wl_input = args.wl_activate,wl_activate=args.wl_activate,
                                  wl_error=args.wl_error,wl_weight= args.wl_weight,inference=args.inference,onoffratio=args.onoffratio,cellBit=args.cellBit,
                                  subArray=args.subArray,ADCprecision=args.ADCprecision,vari=args.vari,t=args.t,v=args.v,detect=args.detect,target=args.target,
-                                 name = 'Conv'+str(i)+'_', model = args.model, layer_Conv = layer_Conv)
+                                 name = 'Conv'+str(i)+'_', model = args.model, layer_Conv = layer_Conv, indexs_high_t_range=indexs_high_t_range, temperatures_images = temperatures_images)
             elif args.mode == "FP":
                 conv2d = FConv2d(in_channels, out_channels, kernel_size=v[2], padding=padding,
                                  logger=logger,wl_input = args.wl_activate,wl_weight= args.wl_weight,inference=args.inference,onoffratio=args.onoffratio,cellBit=args.cellBit,
@@ -85,10 +90,10 @@ cfg_list = {
                 ('M', 2, 2)]
 }
 
-def vgg8( args, logger, pretrained=None):
+def vgg8( args, logger, indexs_high_t_range, temperatures_images, pretrained=None):
     cfg = cfg_list['vgg8']
-    layers = make_layers(cfg, args, logger)
-    model = VGG(args,layers, num_classes=10,logger = logger)
+    layers = make_layers(cfg, args, logger, indexs_high_t_range, temperatures_images)
+    model = VGG(args,layers, indexs_high_t_range, temperatures_images, num_classes=10,logger = logger)
     if pretrained is not None:
         model.load_state_dict(torch.load(pretrained))
     return model
