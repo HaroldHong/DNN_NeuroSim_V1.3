@@ -113,9 +113,12 @@ criterion = torch.nn.CrossEntropyLoss()
 # criterion = wage_util.SSE()
 
 # test with storing the input is time consuming, 5 batches are enough for observation
-test_num = 5
+test_num = 1
+indexs_high_t_range = [391,189,244,235,297,368,363,44,67,406,206,472,447,286,310,298,245,22,176,276,477,414,497,202,154,283,364,54,45,132]
 for i, (data, target) in enumerate(test_loader):
     if i<test_num:
+        # load images with significant temperature range in ConV_1 layer
+        data = data[indexs_high_t_range]
         print ('{}th data\'s size = {}'.format(i, len(data)))
         print (data.shape)
 
