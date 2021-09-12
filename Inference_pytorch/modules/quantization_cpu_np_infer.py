@@ -7,6 +7,7 @@ from torch._jit_internal import weak_script_method
 import numpy as np
 import pandas as pd
 import math
+from multiprocessing import Pool
 
 class QConv2d(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size,
@@ -499,15 +500,34 @@ class QConv2d_T(nn.Conv2d):
             print("crxb_col:", self.crxb_col, ", crxb_col_pads:", self.crxb_col_pads)
             print("w_pad:", w_pad, ", input_pad:", input_pad, "int(weight.shape[1]/self.subArray) = ", int(weight.shape[1]/self.subArray))
 
+            # load in temperature maps
             T_map_1tile = np.zeros((input.shape[0],input.shape[2]*input.shape[3],4))
             for index, i_image in enumerate(self.indexs_high_t_range):
                 image = self.temperatures_images[self.temperatures_images['i_image']==i_image]
-                # for i_feature_unfold in range(T_map_1tile.shape[1]):
+                # indexs_high_t_range selects top 30 images in a decreasing order
                 T_map_1tile[index,:,0] = image[['CROSSBAR_BTM0Q(K)']].values.T[0]
                 T_map_1tile[index,:,1] = image[['CROSSBAR_BTM1Q(K)']].values.T[0]
                 T_map_1tile[index,:,2] = image[['CROSSBAR_TOP2Q(K)']].values.T[0]
                 T_map_1tile[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
+            # first compute the current of dummy matrix
+            T_map_dummy_min = np.min(T_map_1tile, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
+            T_map_dummy_1d = T_map_dummy_min[:,0]
+            # dummy matrix take 
+            T_map_dummy = np.expand_dims(np.expand_dims(T_map_dummy_1d,1).repeat(T_map_1tile.shape[1],axis=1),2).repeat(T_map_1tile.shape[2],axis=2)
 
+
+            pool = Pool()
+            I_dummy_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_dummy.flatten())
+            pool.close()
+            pool.join()
+            I_dummy_arr = np.array(I_dummy_list)
+            I_dummy_ON_map = I_dummy_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
+            I_dummy_OFF_map = I_dummy_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
+
+            # I_ON_map = 
+
+            # generate impacts according to temperature maps
+            # 1. dummy xbar array
 
             for i in range (self.weight.shape[2]):
                 for j in range (self.weight.shape[3]):

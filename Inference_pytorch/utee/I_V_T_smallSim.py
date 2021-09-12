@@ -6,6 +6,8 @@ import csv
 import pandas as pd
 from scipy.special import erfinv
 from scipy.special.basic import _range_prod
+from multiprocessing import Pool
+
 numColPerSynapse = 4
 NormalizedMin = 0
 NormalizedMax = pow(2, numColPerSynapse)
@@ -40,6 +42,28 @@ def I_V_T_sim(V, T):
     # print(1/(N*G_0*math.exp(-alpha*phi_V)))
     return I_ON_base, I_OFF
 
+def I_V_T_sim_fixedV(T):
+    V = 0.2
+    alpha = 2.80; phi_0 = 1.14; gamma = 0.95; theta = 7.3e-4; T0 = 300; V0=1e-9 # parameters for OFF-state without cycling,
+    phi_V0_T0 = phi_0 - gamma*V0 - theta*T0; phi_V = phi_0 - gamma*V; phi_V_T = phi_0 - gamma*V - theta*T; G_0 = 1/12.9*1e-3
+    R_OFF_target = 10/G_0
+    # model of 2014' JAP "Multi-scale quantum point..."
+    tB_0 = 0.25e-9; t_0 = 0.12e-9 # RESET(LRS->HRS): 0.25, SET(HRS->LRS): 0.59
+    m_0 = 9.11e-31*5.6096e35; m_star = 1.08*m_0
+    alpha1 = tB_0*math.pi*math.pi/h*math.sqrt(2*m_star/phi_0)
+    alpha2 =  tB_0/(t_0*phi_V)
+    alpha3 = math.log(1/(R_OFF_target*N*G_0))/(-phi_0)
+    alpha = alpha
+    # print("alpha1: ", alpha1,", alpha2: ", alpha2, ", alpha3: ", alpha3)
+
+    # I_OFF = 2.0*q/(h*alpha)*math.exp(-alpha*phi_V_T)/np.sinc(alpha*k*T)*(1-math.exp(-alpha*V))
+    I_OFF = 2.0*q/(h*alpha)*math.exp(-alpha*phi_V_T)*(1-math.exp(-alpha*V))
+    I_LHRS = 2*q/h*N*(V+1/alpha*math.log((1+math.exp(alpha*(phi_0-0.9*V)))/(1+math.exp(alpha*(phi_0+(1-0.9)*V)))))
+    RON_0 =  13e3
+    R_ON_base = RON_0*(1+rou_w*(T-T0))
+    I_ON_base = N*G_0/(1+N*G_0*R_ON_base)*V
+    
+    return I_ON_base, I_OFF
 
 def getConductanceRow_Neurosim(weight_4bit): # , maxConductance, minConductance):
     cellrange = pow(2, 1)
@@ -314,8 +338,22 @@ vec_multiply_accumulate_T300, vec_current_accumulate_T300_with_deviation, vec_cu
 f_accurate = frac_sum_bin_to_decimal(vec_multiply_accumulate_T300)
 f_reconstruct = frac_sum_bin_to_decimal(vec_current_accumulate_T300_with_deviation*6*1e5)
 
+# test python parallization
+
+T_test = np.zeros((3,4))+300
+
+pool = Pool()
+I_list = pool.map(I_V_T_sim_fixedV, T_test.flatten())
+pool.close()
+pool.join()
+I_arr = np.array(I_list)
+I_ON_arr = I_arr[:,0]
+I_OFF_arr = I_arr[:,1]
 I_ON, I_OFF = I_V_T_sim(0.2, 300)
-print('\n', I_ON, I_OFF, (I_OFF+I_ON)/2, (I_ON-I_OFF)/2)
+print("I_ON_arr, I_OFF_arr ")
+print( I_ON_arr )
+print(I_OFF_arr)
+# print('\n', I_ON_arr, I_OFF_arr, (I_OFF_arr+I_ON_arr)/2, (I_ON_arr-I_OFF_arr)/2)
 
 print('\n',vec_multiply_accumulate_T300, vec_current_accumulate_T300_with_deviation)
 
