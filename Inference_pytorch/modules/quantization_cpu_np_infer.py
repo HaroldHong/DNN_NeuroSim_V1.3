@@ -511,11 +511,12 @@ class QConv2d_T(nn.Conv2d):
                 T_map_1tile[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
             # first compute the current of dummy matrix
             T_map_dummy_min = np.min(T_map_1tile, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
+            # we take the first flatten feature of images as the baseline dummy temperature, 
+            # i.e. computations within an image share a common dummy matrix, i.e. temperature sensors update per image
             T_map_dummy_1d = T_map_dummy_min[:,0]
-            # dummy matrix take 
+            # repeat and expand the array from dimention(n_images) to (n_images, n_flatten_features, n_blocks)
             T_map_dummy = np.expand_dims(np.expand_dims(T_map_dummy_1d,1).repeat(T_map_1tile.shape[1],axis=1),2).repeat(T_map_1tile.shape[2],axis=2)
-
-
+            # call multiprocessors to compute the affected current
             pool = Pool()
             I_dummy_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_dummy.flatten())
             pool.close()
@@ -524,7 +525,13 @@ class QConv2d_T(nn.Conv2d):
             I_dummy_ON_map = I_dummy_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
             I_dummy_OFF_map = I_dummy_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
 
-            # I_ON_map = 
+            pool = Pool()
+            I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_1tile.flatten())
+            pool.close()
+            pool.join()
+            I_partial_arr = np.array(I_partial_list)
+            I_partial_ON_map = I_partial_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
+            I_partial_OFF_map = I_partial_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
 
             # generate impacts according to temperature maps
             # 1. dummy xbar array
