@@ -338,7 +338,6 @@ class QConv2d(nn.Conv2d):
                                     # if abs(deviation_max) > 1:
                                     #     print("deviation of mul decompose: ", deviation_max, "min: ", deviation_min, " max of standard: ", output_crxb_standard_max, " min: ", output_crxb_standard_min)
 
-
                                     # output_sum = torch.sum(output_crxb, dim=2)
                                     # outputPartial = output_sum.view(output_sum.shape[0],
                                     #                         output_sum.shape[1] * output_sum.shape[2],
@@ -361,7 +360,6 @@ class QConv2d(nn.Conv2d):
                                 outputP = outputP + outputSP
                             scalerIN = 2**z
                             outputIN = outputIN + outputP*scalerIN
-
 
                         output = output + outputIN/(2**bitActivation)
             output = output/(2**bitWeight)   # since weight range was convert from [-1, 1] to [-256, 256]
@@ -420,6 +418,8 @@ class QConv2d_T(nn.Conv2d):
         self.name = name
         self.model = model
         self.layer_Conv = layer_Conv
+        self.scale  = wage_initializer.wage_init_(self.weight, self.wl_weight, factor=1.0)
+
         # pytorx parameters
         weight_flatten = self.weight.view(self.out_channels, -1)
         self.crxb_row, self.crxb_row_pads = self.num_pad(
@@ -439,11 +439,11 @@ class QConv2d_T(nn.Conv2d):
         self.delta_g = (self.Gmax - self.Gmin) / (2 ** 7)  # conductance step
         # self.w2g = w2g(self.delta_g, Gmin=self.Gmin, G_SA0=self.Gmax,
         #                G_SA1=self.Gmin, weight_shape=weight_crxb.shape, enable_SAF=False)        
-        self.scale  = wage_initializer.wage_init_(self.weight, self.wl_weight, factor=1.0)
+        
         # self.nchout_index = nn.Parameter(torch.arange(self.out_channels), requires_grad=False)
         self.nchout_index = torch.arange(self.out_channels).cuda()
 
-        # Temperature recrdings of selected images, Conv layer 1 and 8th PE by default
+        # Temperature recordings of selected images, Conv layer 1 and 8th PE by default
         self.indexs_high_t_range = indexs_high_t_range
         self.temperatures_images = temperatures_images
 
@@ -469,8 +469,8 @@ class QConv2d_T(nn.Conv2d):
         if self.inference == 1 and self.model=='VGG8':
             # set parameters for Hardware Inference
             onoffratio = self.onoffratio
-            upper = 1
-            lower = 1/onoffratio
+            upper = 1e-5
+            lower = upper/onoffratio
         
             output = torch.zeros_like(outputOrignal)
             del outputOrignal
@@ -501,37 +501,38 @@ class QConv2d_T(nn.Conv2d):
             print("w_pad:", w_pad, ", input_pad:", input_pad, "int(weight.shape[1]/self.subArray) = ", int(weight.shape[1]/self.subArray))
 
             # load in temperature maps
-            T_map_1tile = np.zeros((input.shape[0],input.shape[2]*input.shape[3],4))
-            for index, i_image in enumerate(self.indexs_high_t_range):
-                image = self.temperatures_images[self.temperatures_images['i_image']==i_image]
-                # indexs_high_t_range selects top 30 images in a decreasing order
-                T_map_1tile[index,:,0] = image[['CROSSBAR_BTM0Q(K)']].values.T[0]
-                T_map_1tile[index,:,1] = image[['CROSSBAR_BTM1Q(K)']].values.T[0]
-                T_map_1tile[index,:,2] = image[['CROSSBAR_TOP2Q(K)']].values.T[0]
-                T_map_1tile[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
-            # first compute the current of dummy matrix
-            T_map_dummy_min = np.min(T_map_1tile, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
-            # we take the first flatten feature of images as the baseline dummy temperature, 
-            # i.e. computations within an image share a common dummy matrix, i.e. temperature sensors update per image
-            T_map_dummy_1d = T_map_dummy_min[:,0]
-            # repeat and expand the array from dimention(n_images) to (n_images, n_flatten_features, n_blocks)
-            T_map_dummy = np.expand_dims(np.expand_dims(T_map_dummy_1d,1).repeat(T_map_1tile.shape[1],axis=1),2).repeat(T_map_1tile.shape[2],axis=2)
-            # call multiprocessors to compute the affected current
-            pool = Pool()
-            I_dummy_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_dummy.flatten())
-            pool.close()
-            pool.join()
-            I_dummy_arr = np.array(I_dummy_list)
-            I_dummy_ON_map = I_dummy_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
-            I_dummy_OFF_map = I_dummy_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
+            if self.layer_Conv == 1:
+                T_map_1tile = np.zeros((input.shape[0],input.shape[2]*input.shape[3],4))
+                for index, i_image in enumerate(self.indexs_high_t_range):
+                    image = self.temperatures_images[self.temperatures_images['i_image']==i_image]
+                    # indexs_high_t_range selects top 30 images in a decreasing order
+                    T_map_1tile[index,:,0] = image[['CROSSBAR_BTM0Q(K)']].values.T[0]
+                    T_map_1tile[index,:,1] = image[['CROSSBAR_BTM1Q(K)']].values.T[0]
+                    T_map_1tile[index,:,2] = image[['CROSSBAR_TOP2Q(K)']].values.T[0]
+                    T_map_1tile[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
+                # first compute the current of dummy matrix
+                T_map_dummy_min = np.min(T_map_1tile, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
+                # we take the first flatten feature of images as the baseline dummy temperature, 
+                # i.e. computations within an image share a common dummy matrix, i.e. temperature sensors update per image
+                T_map_dummy_1d = T_map_dummy_min[:,0]
+                # repeat and expand the array from dimention(n_images) to (n_images, n_flatten_features, n_blocks)
+                T_map_dummy = np.expand_dims(np.expand_dims(T_map_dummy_1d,1).repeat(T_map_1tile.shape[1],axis=1),2).repeat(T_map_1tile.shape[2],axis=2)
+                # call multiprocessors to compute the affected current
+                pool = Pool()
+                I_dummy_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_dummy.flatten())
+                pool.close()
+                pool.join()
+                I_dummy_arr = np.array(I_dummy_list)
+                I_dummy_ON_map = I_dummy_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
+                I_dummy_OFF_map = I_dummy_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
 
-            pool = Pool()
-            I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_1tile.flatten())
-            pool.close()
-            pool.join()
-            I_partial_arr = np.array(I_partial_list)
-            I_partial_ON_map = I_partial_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
-            I_partial_OFF_map = I_partial_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
+                pool = Pool()
+                I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_1tile.flatten())
+                pool.close()
+                pool.join()
+                I_partial_arr = np.array(I_partial_list)
+                I_partial_ON_map = I_partial_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
+                I_partial_OFF_map = I_partial_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
 
             # generate impacts according to temperature maps
             # 1. dummy xbar array
@@ -778,13 +779,14 @@ class QConv2d_T(nn.Conv2d):
                                     outputD = outputD + outputDummyPartialQ*scaler*2/(1-1/onoffratio)
                                 # !!! Important !!! the dummy need to be multiplied by a ratio
                                 outputSP = outputSP - outputD  # minus dummy column
+                                # outputSP /= (upper) # here upper is the ON conductance, a small number in 1e-5 magnitude
                                 outputP = outputP + outputSP
                             scalerIN = 2**z
                             outputIN = outputIN + outputP*scalerIN
-
-
                         output = output + outputIN/(2**bitActivation)
+                        
             output = output/(2**bitWeight)   # since weight range was convert from [-1, 1] to [-256, 256]
+            output /= upper # here upper is the ON conductance, a small number in 1e-5 magnitude
             print("input.shape: ", input.shape, ", output.shape: ", output.shape)
             # if self.layer_Conv == 1:    # Conv layer 1 gets impacted most
                 # print("output before and after the thermal imbalance impact: output_b = ", output, ", output_a = ", output*1.2)

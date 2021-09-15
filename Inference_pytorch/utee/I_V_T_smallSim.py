@@ -220,11 +220,13 @@ def MAC_with_impact(pairs_weight_temperature):
 
 # path_weight = "weightConv1_.csv"
 # path_result = "ConvertResult.csv"
-ConvertResult = []
-f_accurate_vec = []; f_dummy_wo_deviation_balance_vec = []; f_dummy_wo_deviation_unbalance_vec = []
-f_dummy_with_deviation_balance_vec = []; f_dummy_with_deviation_unbalance_vec = []
-balance_diff_with_deviation_vec = []; unbalance_diff_with_deviation_vec = []; relative_diff_with_deviation_vec = []
-balance_diff_wo_deviation_vec = []; unbalance_diff_wo_deviation_vec = []; relative_diff_wo_deviation_vec = []
+
+# ConvertResult = []
+# f_accurate_vec = []; f_dummy_wo_deviation_balance_vec = []; f_dummy_wo_deviation_unbalance_vec = []
+# f_dummy_with_deviation_balance_vec = []; f_dummy_with_deviation_unbalance_vec = []
+# balance_diff_with_deviation_vec = []; unbalance_diff_with_deviation_vec = []; relative_diff_with_deviation_vec = []
+# balance_diff_wo_deviation_vec = []; unbalance_diff_wo_deviation_vec = []; relative_diff_wo_deviation_vec = []
+
 # with open(path_weight) as f_weight:
 #     w_csv = csv.reader(f_weight)
 #     w_matrix_full = list(w_csv)
@@ -324,49 +326,49 @@ balance_diff_wo_deviation_vec = []; unbalance_diff_wo_deviation_vec = []; relati
     
 
 # f_test = [-0.375,0.125,0.75,0.375,-0.875,-0.25,0.75,-1,0.5,-0.5,-0.625,0.125,0.625,0.25,-0.5,0.875,-0.375,0.125,-0.625,0.25,-0.75,0.25,-0.125,0.875,0.875,0.375,0.125,0.5,-0.375,-0.75]
-f_test = []; acc_sum = 0
-for i in range(20):
-    test = random.random()*2-1; acc_sum = acc_sum+test
-    f_test.append(test)
-print(sum(f_test), len(f_test))
-pairs_weight_temperature_T300 = []
-for i in range(len(f_test)):
-    pairs_weight_temperature_T300.append([f_test[i], 300])
-print(pairs_weight_temperature_T300)
-# vec_multiply_accumulate_T300, vec_current_accumulate_T300
-vec_multiply_accumulate_T300, vec_current_accumulate_T300_with_deviation, vec_current_accumulate_T300_wo_deviation = MAC_with_impact(pairs_weight_temperature_T300)
-f_accurate = frac_sum_bin_to_decimal(vec_multiply_accumulate_T300)
-f_reconstruct = frac_sum_bin_to_decimal(vec_current_accumulate_T300_with_deviation*6*1e5)
+# f_test = []; acc_sum = 0
+# for i in range(20):
+#     test = random.random()*2-1; acc_sum = acc_sum+test
+#     f_test.append(test)
+# print(sum(f_test), len(f_test))
+# pairs_weight_temperature_T300 = []
+# for i in range(len(f_test)):
+#     pairs_weight_temperature_T300.append([f_test[i], 300])
+# print(pairs_weight_temperature_T300)
+# # vec_multiply_accumulate_T300, vec_current_accumulate_T300
+# vec_multiply_accumulate_T300, vec_current_accumulate_T300_with_deviation, vec_current_accumulate_T300_wo_deviation = MAC_with_impact(pairs_weight_temperature_T300)
+# f_accurate = frac_sum_bin_to_decimal(vec_multiply_accumulate_T300)
+# f_reconstruct = frac_sum_bin_to_decimal(vec_current_accumulate_T300_with_deviation*6*1e5)
 
-# test python parallization
+# # test python parallization
 
-T_test = np.zeros((3,4))+300
+# T_test = np.zeros((3,4))+300
 
-pool = Pool()
-I_list = pool.map(I_V_T_sim_fixedV, T_test.flatten())
-pool.close()
-pool.join()
-I_arr = np.array(I_list)
-I_ON_arr = I_arr[:,0]
-I_OFF_arr = I_arr[:,1]
-I_ON, I_OFF = I_V_T_sim(0.2, 300)
-print("I_ON_arr, I_OFF_arr ")
-print( I_ON_arr )
-print(I_OFF_arr)
-# print('\n', I_ON_arr, I_OFF_arr, (I_OFF_arr+I_ON_arr)/2, (I_ON_arr-I_OFF_arr)/2)
+# pool = Pool()
+# I_list = pool.map(I_V_T_sim_fixedV, T_test.flatten())
+# pool.close()
+# pool.join()
+# I_arr = np.array(I_list)
+# I_ON_arr = I_arr[:,0]
+# I_OFF_arr = I_arr[:,1]
+# I_ON, I_OFF = I_V_T_sim(0.2, 300)
+# print("I_ON_arr, I_OFF_arr ")
+# print( I_ON_arr )
+# print(I_OFF_arr)
+# # print('\n', I_ON_arr, I_OFF_arr, (I_OFF_arr+I_ON_arr)/2, (I_ON_arr-I_OFF_arr)/2)
 
-print('\n',vec_multiply_accumulate_T300, vec_current_accumulate_T300_with_deviation)
+# print('\n',vec_multiply_accumulate_T300, vec_current_accumulate_T300_with_deviation)
 
 
-vec_current_minus_dummy_T300 = vec_current_accumulate_T300_with_deviation - len(f_test)*(I_OFF+I_ON)/2
-print('\n',vec_current_minus_dummy_T300)
-vec_minus_dummy = [math.ceil(w / ((I_ON-I_OFF)/2)) for w in vec_current_minus_dummy_T300]
-print('\n',vec_minus_dummy)
-min_negative = 0
-if min(vec_minus_dummy)<0:
-    min_negative = min(vec_minus_dummy)
-vec_convert_dummy = np.asarray(vec_minus_dummy)+len(f_test)*np.ones(numColPerSynapse)
-vec_convert_dummy = vec_convert_dummy//2
-print('\n',vec_convert_dummy//2)
-f_dummy = frac_sum_bin_to_decimal(vec_convert_dummy)
-print('\n',acc_sum, f_accurate, f_dummy)
+# vec_current_minus_dummy_T300 = vec_current_accumulate_T300_with_deviation - len(f_test)*(I_OFF+I_ON)/2
+# print('\n',vec_current_minus_dummy_T300)
+# vec_minus_dummy = [math.ceil(w / ((I_ON-I_OFF)/2)) for w in vec_current_minus_dummy_T300]
+# print('\n',vec_minus_dummy)
+# min_negative = 0
+# if min(vec_minus_dummy)<0:
+#     min_negative = min(vec_minus_dummy)
+# vec_convert_dummy = np.asarray(vec_minus_dummy)+len(f_test)*np.ones(numColPerSynapse)
+# vec_convert_dummy = vec_convert_dummy//2
+# print('\n',vec_convert_dummy//2)
+# f_dummy = frac_sum_bin_to_decimal(vec_convert_dummy)
+# print('\n',acc_sum, f_accurate, f_dummy)

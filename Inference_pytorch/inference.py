@@ -127,7 +127,7 @@ criterion = torch.nn.CrossEntropyLoss()
 
 
 # test with storing the input is time consuming, 5 batches are enough for observation
-test_num = 1; temperature_flag = 1
+test_num = 1; temperature_flag = 0
 
 for i, (data, target) in enumerate(test_loader):
     if i<test_num:
@@ -138,7 +138,7 @@ for i, (data, target) in enumerate(test_loader):
         print ('{}th data\'s size = {}'.format(i, len(data)))
         print (data.shape)
 
-        hook_handle_list = hook.hardware_evaluation(modelCF,args.wl_weight,args.wl_activate,args.model,args.mode, i, args) # use i to store input data under ith folder
+        # hook_handle_list = hook.hardware_evaluation(modelCF,args.wl_weight,args.wl_activate,args.model,args.mode, i, args) # use i to store input data under ith folder
         indx_target = target.clone()
         if args.cuda:
             data, target = data.cuda(), target.cuda()
@@ -157,7 +157,7 @@ for i, (data, target) in enumerate(test_loader):
             print("test_loss: ", test_loss, "correct: ", correct, ", accuracy: ", acc)
             print(args.subArray)
 
-        hook.remove_hook_list(hook_handle_list)
+        # hook.remove_hook_list(hook_handle_list)
     else: 
         break
 
