@@ -500,7 +500,7 @@ class QConv2d_T(nn.Conv2d):
             print("crxb_col:", self.crxb_col, ", crxb_col_pads:", self.crxb_col_pads)
             print("w_pad:", w_pad, ", input_pad:", input_pad, "int(weight.shape[1]/self.subArray) = ", int(weight.shape[1]/self.subArray))
 
-            # load in temperature maps
+            # load in temperature maps of 8th PE
             if self.layer_Conv == 1:
                 T_map_1tile = np.zeros((input.shape[0],input.shape[2]*input.shape[3],4))
                 for index, i_image in enumerate(self.indexs_high_t_range):
@@ -512,7 +512,7 @@ class QConv2d_T(nn.Conv2d):
                     T_map_1tile[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
                 # first compute the current of dummy matrix
                 T_map_dummy_min = np.min(T_map_1tile, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
-                # we take the first flatten feature of images as the baseline dummy temperature, 
+                # we take the first flatten feature of each image as the baseline dummy temperature, 
                 # i.e. computations within an image share a common dummy matrix, i.e. temperature sensors update per image
                 T_map_dummy_1d = T_map_dummy_min[:,0]
                 # repeat and expand the array from dimention(n_images) to (n_images, n_flatten_features, n_blocks)
@@ -523,16 +523,18 @@ class QConv2d_T(nn.Conv2d):
                 pool.close()
                 pool.join()
                 I_dummy_arr = np.array(I_dummy_list)
-                I_dummy_ON_map = I_dummy_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
-                I_dummy_OFF_map = I_dummy_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
+                print("\nI_dummy_arr.shape: ", I_dummy_arr.shape)
+                print("weight.shape: ", weight.shape)
+                I_dummy_ON_map = I_dummy_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
+                I_dummy_OFF_map = I_dummy_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
 
                 pool = Pool()
                 I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_1tile.flatten())
                 pool.close()
                 pool.join()
                 I_partial_arr = np.array(I_partial_list)
-                I_partial_ON_map = I_partial_arr[:,0].view(input.shape[0],input.shape[2]*input.shape[3])
-                I_partial_OFF_map = I_partial_arr[:,1].view(input.shape[0],input.shape[2]*input.shape[3])
+                I_partial_ON_map = I_partial_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
+                I_partial_OFF_map = I_partial_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
 
             # generate impacts according to temperature maps
             # 1. dummy xbar array
@@ -721,15 +723,17 @@ class QConv2d_T(nn.Conv2d):
                                     remainderQ = (upper-lower)*(remainder-0)+(cellRange-1)*lower   # weight cannot map to 0, but to Gmin
                                     remainderQ = remainderQ + remainderQ*torch.from_numpy(variation).cuda()
                                     
-                                    # modified alike pytorX
+                                    # modify to alike pytorX
                                     
                                     input_unfold = F.unfold(inputB, kernel_size=self.kernel_size,
                                     dilation=self.dilation, padding=self.padding,
                                     stride=self.stride)
                                     weight_flatten = (remainderQ*mask).view(self.out_channels, -1)
-                                    
+                                    dummy_flatten = (dummyP*mask).view(self.out_channels, -1)
                                     # 2.2. add paddings
                                     weight_padded = F.pad(weight_flatten, w_pad,
+                                                        mode='constant', value=0)
+                                    dummy_padded = F.pad(dummy_flatten, w_pad,
                                                         mode='constant', value=0)
                                     input_padded = F.pad(input_unfold, input_pad,
                                                         mode='constant', value=0)
@@ -737,6 +741,8 @@ class QConv2d_T(nn.Conv2d):
                                     input_crxb = input_padded.view(input.shape[0], 1, self.crxb_row,
                                                                 self.subArray, input_padded.shape[2])
                                     weight_crxb = weight_padded.view(self.crxb_col, self.subArray,
+                                                                    self.crxb_row, self.subArray).transpose(1, 2)
+                                    dummy_crxb = dummy_padded.view(self.crxb_col, self.subArray,
                                                                     self.crxb_row, self.subArray).transpose(1, 2)
                                     # G_crxb = self.w2g(weight_crxb)
 
@@ -751,8 +757,21 @@ class QConv2d_T(nn.Conv2d):
                                     for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
                                         for w_0 in range(weight_crxb.shape[0]): # w_0 is the first dimention of weight_crxb
                                             for in_4 in range(input_crxb.shape[4]): #i_4 is the last dimention
+                                                # replace the ION and IOF with I with temperature impacts 
+                                                # the PE under observation is filled with I_partial, other PEs is filled with I_dummy
+                                                I_ON_dummy = I_dummy_ON_map[in_0,0,0]
+                                                I_OFF_dummy = I_dummy_OFF_map[in_0,0,0]
+
+                                                I_ON_partial_blocks = I_partial_ON_map[in_0,in_4]
+                                                I_OFF_partial_blocks = I_partial_OFF_map[in_0,in_4]
+
+                                                for i_PE in range(input_crxb.shape[2]):
+                                                    if i_PE == 8:
+                                                        I_ON_partial_blocks  # to continue
                                                 # sub_input_unsqueeze = (input_crxb[i_0,i_1,:,:,i_4]).unsqueeze(2).unsqueeze(0).unsqueeze(0)
                                                 output_crxb[in_0,w_0,:,:,in_4] += torch.matmul(weight_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                    
+                                    # check the difference between standard digitally computation and the flatten model
                                     deviation_max = torch.max(output_crxb - output_crxb_standard).item()
                                     deviation_min = torch.min(output_crxb - output_crxb_standard).item()
                                     output_crxb_standard_max = torch.max(output_crxb_standard).item()

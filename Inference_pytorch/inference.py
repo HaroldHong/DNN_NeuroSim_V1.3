@@ -127,7 +127,7 @@ criterion = torch.nn.CrossEntropyLoss()
 
 
 # test with storing the input is time consuming, 5 batches are enough for observation
-test_num = 1; temperature_flag = 0
+test_num = 1; temperature_flag = 1
 
 for i, (data, target) in enumerate(test_loader):
     if i<test_num:
