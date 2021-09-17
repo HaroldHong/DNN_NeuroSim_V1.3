@@ -444,9 +444,11 @@ class QConv2d_T(nn.Conv2d):
         self.nchout_index = torch.arange(self.out_channels).cuda()
 
         # Temperature recordings of selected images, Conv layer 1 and 8th PE by default
+        self.temperature_sim = False
         self.indexs_high_t_range = indexs_high_t_range
         self.temperatures_images = temperatures_images
-
+        self.numblock = 4
+        self.blocksize = self.subArray/self.numblock
     def num_pad(self, source, target):
         crxb_index = math.ceil(source / target)
         num_padding = crxb_index * target - source
@@ -478,7 +480,7 @@ class QConv2d_T(nn.Conv2d):
         
             # Now consider on/off ratio
             dummyP = torch.zeros_like(weight)
-            dummyP[:,:,:,:] = (cellRange-1)*(upper+lower)/2
+            dummyP[:,:,:,:] = (cellRange-1)*(1+0)/2
             
             # args in pytorX
             weight_flatten = self.weight.view(self.out_channels, -1)
@@ -525,16 +527,16 @@ class QConv2d_T(nn.Conv2d):
                 I_dummy_arr = np.array(I_dummy_list)
                 print("\nI_dummy_arr.shape: ", I_dummy_arr.shape)
                 print("weight.shape: ", weight.shape)
-                I_dummy_ON_map = I_dummy_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
-                I_dummy_OFF_map = I_dummy_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
+                I_dummy_ON_map = I_dummy_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+                I_dummy_OFF_map = I_dummy_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
 
                 pool = Pool()
                 I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_1tile.flatten())
                 pool.close()
                 pool.join()
                 I_partial_arr = np.array(I_partial_list)
-                I_partial_ON_map = I_partial_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
-                I_partial_OFF_map = I_partial_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],4)
+                I_partial_ON_map = I_partial_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+                I_partial_OFF_map = I_partial_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
 
             # generate impacts according to temperature maps
             # 1. dummy xbar array
@@ -720,15 +722,17 @@ class QConv2d_T(nn.Conv2d):
                                     # Now also consider weight has on/off ratio effects
                                     # Here remainder is the weight mapped to Hardware, so we introduce on/off ratio in this value
                                     # the range of remainder is [0, cellRange-1], we truncate it to [lower, upper]*(cellRange-1)
-                                    remainderQ = (upper-lower)*(remainder-0)+(cellRange-1)*lower   # weight cannot map to 0, but to Gmin
-                                    remainderQ = remainderQ + remainderQ*torch.from_numpy(variation).cuda()
+                                    # to simulate temperature to weight matrix, this is moved to later
+                                    
+                                    # remainderQ = (upper-lower)*(remainder-0)+(cellRange-1)*lower   # weight cannot map to 0, but to Gmin
+                                    # remainderQ = remainderQ + remainderQ*torch.from_numpy(variation).cuda()
                                     
                                     # modify to alike pytorX
                                     
                                     input_unfold = F.unfold(inputB, kernel_size=self.kernel_size,
                                     dilation=self.dilation, padding=self.padding,
                                     stride=self.stride)
-                                    weight_flatten = (remainderQ*mask).view(self.out_channels, -1)
+                                    weight_flatten = (remainder*mask).view(self.out_channels, -1)
                                     dummy_flatten = (dummyP*mask).view(self.out_channels, -1)
                                     # 2.2. add paddings
                                     weight_padded = F.pad(weight_flatten, w_pad,
@@ -752,36 +756,54 @@ class QConv2d_T(nn.Conv2d):
 
                                     # Start decomposation
                                     output_crxb_standard = torch.matmul(weight_crxb, input_crxb)
-                                    output_crxb = torch.zeros_like(output_crxb_standard)
-                                    # decompose matrix multiplication
+                                    output_partial_crxb = torch.zeros_like(output_crxb_standard)
+                                    output_dummy_crxb = torch.zeros_like(output_crxb_standard)
+                                    # decompose matrix multiplication, need to declare that this is only on the layer Conv1.
                                     for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
+                                        I_ON_impact_dummy = I_dummy_ON_map[in_0,0,0]
+                                        I_OFF_impact_dummy = I_dummy_OFF_map[in_0,0,0]
+                                        dummy_crxb[:,:,:,:] *= (I_ON_impact_dummy+I_OFF_impact_dummy)
                                         for w_0 in range(weight_crxb.shape[0]): # w_0 is the first dimention of weight_crxb
-                                            for in_4 in range(input_crxb.shape[4]): #i_4 is the last dimention
+                                            for in_4 in range(input_crxb.shape[4]): # 1024 input vectors for the layer Conv1
                                                 # replace the ION and IOF with I with temperature impacts 
                                                 # the PE under observation is filled with I_partial, other PEs is filled with I_dummy
-                                                I_ON_dummy = I_dummy_ON_map[in_0,0,0]
-                                                I_OFF_dummy = I_dummy_OFF_map[in_0,0,0]
-
                                                 I_ON_partial_blocks = I_partial_ON_map[in_0,in_4]
                                                 I_OFF_partial_blocks = I_partial_OFF_map[in_0,in_4]
 
-                                                for i_PE in range(input_crxb.shape[2]):
-                                                    if i_PE == 8:
-                                                        I_ON_partial_blocks  # to continue
+                                                for i_PE in range(weight_crxb.shape[1]):
+                                                    if i_PE == 8 and self.layer_Conv == 1 and self.temperature_sim == True:
+                                                        for i_block in range(I_ON_partial_blocks.shape[0]):
+                                                            weight_crxb[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:] = \
+                                                                (I_ON_partial_blocks[i_block]-I_OFF_partial_blocks[i_block])\
+                                                                *(weight_crxb[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:]-0)\
+                                                                +(cellRange-1)*I_OFF_partial_blocks[i_block]
+                                                    else:
+                                                        weight_crxb[w_0,i_PE,:,:] = (I_ON_impact_dummy-I_OFF_impact_dummy)\
+                                                            *(weight_crxb[w_0,i_PE,:,:]-0)+(cellRange-1)*I_OFF_impact_dummy
+                                                    
+                                                    
                                                 # sub_input_unsqueeze = (input_crxb[i_0,i_1,:,:,i_4]).unsqueeze(2).unsqueeze(0).unsqueeze(0)
-                                                output_crxb[in_0,w_0,:,:,in_4] += torch.matmul(weight_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                mul_partial_crxb = torch.matmul(weight_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                mul_dummy_crxb = torch.matmul(dummy_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb/I_ON_impact_dummy
+                                                output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb/I_ON_impact_dummy
                                     
                                     # check the difference between standard digitally computation and the flatten model
-                                    deviation_max = torch.max(output_crxb - output_crxb_standard).item()
-                                    deviation_min = torch.min(output_crxb - output_crxb_standard).item()
-                                    output_crxb_standard_max = torch.max(output_crxb_standard).item()
-                                    output_crxb_standard_min = torch.min(output_crxb_standard).item()
-                                    if abs(deviation_max) > 1:
-                                        print("deviation of mul decompose: ", deviation_max, "min: ", deviation_min, " max of standard: ", output_crxb_standard_max, " min: ", output_crxb_standard_min)
+                                    # deviation_max = torch.max(output_crxb - output_crxb_standard).item()
+                                    # deviation_min = torch.min(output_crxb - output_crxb_standard).item()
+                                    # output_crxb_standard_max = torch.max(output_crxb_standard).item()
+                                    # output_crxb_standard_min = torch.min(output_crxb_standard).item()
+                                    # if abs(deviation_max) > 1:
+                                    #     print("deviation of mul decompose: ", deviation_max, "min: ", deviation_min, " max of standard: ", output_crxb_standard_max, " min: ", output_crxb_standard_min)
 
-                                    output_sum = torch.sum(output_crxb, dim=2)
-                                    outputPartial = output_sum.view(output_sum.shape[0],
-                                                            output_sum.shape[1] * output_sum.shape[2],
+                                    output_partial_sum = torch.sum(output_partial_crxb, dim=2)
+                                    outputPartial = output_partial_sum.view(output_partial_sum.shape[0],
+                                                            output_partial_sum.shape[1] * output_partial_sum.shape[2],
+                                                            self.h_out,
+                                                            self.w_out).index_select(dim=1, index=self.nchout_index)
+                                    output_dummy_sum = torch.sum(output_dummy_crxb, dim=2)
+                                    outputDummyPartial = output_dummy_sum.view(output_dummy_sum.shape[0],
+                                                            output_dummy_sum.shape[1] * output_dummy_sum.shape[2],
                                                             self.h_out,
                                                             self.w_out).index_select(dim=1, index=self.nchout_index)
                                     
@@ -789,7 +811,7 @@ class QConv2d_T(nn.Conv2d):
                                     # end of pytorx convolutional computation
 
                                     # outputPartial= F.conv2d(inputB, remainderQ*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
-                                    outputDummyPartial= F.conv2d(inputB, dummyP*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
+                                    # outputDummyPartial= F.conv2d(inputB, dummyP*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
                                     # Add ADC quanization effects here !!!
                                     outputPartialQ = wage_quantizer.LinearQuantizeOut(outputPartial, self.ADCprecision)
                                     outputDummyPartialQ = wage_quantizer.LinearQuantizeOut(outputDummyPartial, self.ADCprecision)
@@ -805,7 +827,7 @@ class QConv2d_T(nn.Conv2d):
                         output = output + outputIN/(2**bitActivation)
                         
             output = output/(2**bitWeight)   # since weight range was convert from [-1, 1] to [-256, 256]
-            output /= upper # here upper is the ON conductance, a small number in 1e-5 magnitude
+            # output /= upper # here upper is the ON conductance, a small number in 1e-5 magnitude
             print("input.shape: ", input.shape, ", output.shape: ", output.shape)
             # if self.layer_Conv == 1:    # Conv layer 1 gets impacted most
                 # print("output before and after the thermal imbalance impact: output_b = ", output, ", output_a = ", output*1.2)
