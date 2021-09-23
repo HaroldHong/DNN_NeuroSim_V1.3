@@ -471,7 +471,7 @@ class QConv2d_T(nn.Conv2d):
         if self.inference == 1 and self.model=='VGG8':
             # set parameters for Hardware Inference
             onoffratio = self.onoffratio
-            upper = 1
+            upper = 1e-5
             lower = upper/onoffratio
         
             output = torch.zeros_like(outputOrignal)
@@ -480,9 +480,8 @@ class QConv2d_T(nn.Conv2d):
         
             # Now consider on/off ratio
             dummyP = torch.zeros_like(weight)
-            dummyP[:,:,:,:] = (cellRange-1)*(1+0.1)/2
-            # dummyP[:,:,:,:] = (cellRange-1)*(upper+lower)/2
-
+            dummyP[:,:,:,:] = (cellRange-1)*(1+0)/2
+            
             # args in pytorX
             weight_flatten = self.weight.view(self.out_channels, -1)
             self.crxb_row, self.crxb_row_pads = self.num_pad(
@@ -613,6 +612,92 @@ class QConv2d_T(nn.Conv2d):
                                 outputIN = outputIN + (outputP - outputD)*scalerIN
                             output = output + outputIN/(2**bitActivation)
                     else:
+                        # # quantize input into binary sequence
+                        # inputQ = torch.round((2**bitActivation - 1)/1 * (input-0) + 0)
+                        # outputIN = torch.zeros_like(output)
+                        # for z in range(bitActivation):
+                        #     inputB = torch.fmod(inputQ, 2)
+                        #     inputQ = torch.round((inputQ-inputB)/2)
+                        #     outputP = torch.zeros_like(output)
+                        #     for s in range(numSubArray):
+                        #         mask = torch.zeros_like(weight)
+                        #         mask[:,(s*self.subArray):(s+1)*self.subArray, i, j] = 1
+                        #         # after get the spacial kernel, need to transfer floating weight [-1, 1] to binarized ones
+                        #         X_decimal = torch.round((2**bitWeight - 1)/2 * (weight+1) + 0)*mask
+                        #         outputSP = torch.zeros_like(output)
+                        #         outputD = torch.zeros_like(output)
+                        #         for k in range (int(bitWeight/self.cellBit)):
+                        #             remainder = torch.fmod(X_decimal, cellRange)*mask
+                        #             # retention
+                        #             remainder = wage_quantizer.Retention(remainder,self.t,self.v,self.detect,self.target)
+                        #             variation = np.random.normal(0, self.vari, list(weight.size())).astype(np.float32)
+                        #             X_decimal = torch.round((X_decimal-remainder)/cellRange)*mask
+                        #             # Now also consider weight has on/off ratio effects
+                        #             # Here remainder is the weight mapped to Hardware, so we introduce on/off ratio in this value
+                        #             # the range of remainder is [0, cellRange-1], we truncate it to [lower, upper]*(cellRange-1)
+                        #             remainderQ = (upper-lower)*(remainder-0)+(cellRange-1)*lower   # weight cannot map to 0, but to Gmin
+                        #             remainderQ = remainderQ + remainderQ*torch.from_numpy(variation).cuda()
+                                    
+                        #             # modified alike pytorX
+                                    
+                        #             input_unfold = F.unfold(inputB, kernel_size=self.kernel_size,
+                        #             dilation=self.dilation, padding=self.padding,
+                        #             stride=self.stride)
+                        #             weight_flatten = (remainderQ*mask).view(self.out_channels, -1)
+                                    
+                        #             # 2.2. add paddings
+                        #             weight_padded = F.pad(weight_flatten, w_pad,
+                        #                                 mode='constant', value=0)
+                        #             input_padded = F.pad(input_unfold, input_pad,
+                        #                                 mode='constant', value=0)
+                        #             # 2.3. reshape to crxb size
+                        #             input_crxb = input_padded.view(input.shape[0], 1, self.crxb_row,
+                        #                                         self.subArray, input_padded.shape[2])
+                        #             weight_crxb = weight_padded.view(self.crxb_col, self.subArray,
+                        #                                             self.crxb_row, self.subArray).transpose(1, 2)
+                        #             # G_crxb = self.w2g(weight_crxb)
+
+                        #             # if z==s==k==0:
+                        #             #     print("\n inputB.shape: ", inputB.shape, "flatten and unfold \ninput_unfold.shape: ", input_unfold.shape, " weight_flatten.shape: ", weight_flatten.shape, 
+                        #             #     " input_crxb.shape: ", input_crxb.shape, " weight_crxb.shape: ", weight_crxb.shape) #, " G_crxb.shape: ", G_crxb.shape)
+
+                        #             output_crxb_standard = torch.matmul(weight_crxb, input_crxb)
+                        #             output_crxb = torch.zeros_like(output_crxb_standard)
+                        #             # decompose matrix multiplication
+                        #             for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
+                        #                 for w_0 in range(weight_crxb.shape[0]): # w_0 is the first dimention of weight_crxb
+                        #                     for in_4 in range(input_crxb.shape[4]): #i_4 is the last dimention
+                        #                         # sub_input_unsqueeze = (input_crxb[i_0,i_1,:,:,i_4]).unsqueeze(2).unsqueeze(0).unsqueeze(0)
+                        #                         output_crxb[in_0,w_0,:,:,in_4] += torch.matmul(weight_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                        #             deviation_max = torch.max(output_crxb - output_crxb_standard).item()
+                        #             deviation_min = torch.min(output_crxb - output_crxb_standard).item()
+                        #             output_crxb_standard_max = torch.max(output_crxb_standard).item()
+                        #             output_crxb_standard_min = torch.min(output_crxb_standard).item()
+                        #             if abs(deviation_max) > 1:
+                        #                 print("deviation of mul decompose: ", deviation_max, "min: ", deviation_min, " max of standard: ", output_crxb_standard_max, " min: ", output_crxb_standard_min)
+
+
+                        #             output_sum = torch.sum(output_crxb, dim=2)
+                        #             outputPartial = output_sum.view(output_sum.shape[0],
+                        #                                     output_sum.shape[1] * output_sum.shape[2],
+                        #                                     self.h_out,
+                        #                                     self.w_out).index_select(dim=1, index=self.nchout_index)
+                        #             # outputPartial *= 2.8
+                        #             # end of pytorx convolutional computation
+
+                        #             # outputPartial= F.conv2d(inputB, remainderQ*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
+                        #             outputDummyPartial= F.conv2d(inputB, dummyP*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
+                        #             # Add ADC quanization effects here !!!
+                        #             outputPartialQ = wage_quantizer.LinearQuantizeOut(outputPartial, self.ADCprecision)
+                        #             outputDummyPartialQ = wage_quantizer.LinearQuantizeOut(outputDummyPartial, self.ADCprecision)
+                        #             scaler = cellRange**k
+                        #             outputSP = outputSP + outputPartialQ*scaler*2/(1-1/onoffratio)
+                        #             outputD = outputD + outputDummyPartialQ*scaler*2/(1-1/onoffratio)
+                        #         # !!! Important !!! the dummy need to be multiplied by a ratio
+                        #         outputSP = outputSP - outputD  # minus dummy column
+                        #         outputP = outputP + outputSP
+                        #     scalerIN = 2**z
+                        #     outputIN = outputIN + outputP*scalerIN
                         
                         # quantize input into binary sequence
                         inputQ = torch.round((2**bitActivation - 1)/1 * (input-0) + 0)
@@ -637,17 +722,17 @@ class QConv2d_T(nn.Conv2d):
                                     # Now also consider weight has on/off ratio effects
                                     # Here remainder is the weight mapped to Hardware, so we introduce on/off ratio in this value
                                     # the range of remainder is [0, cellRange-1], we truncate it to [lower, upper]*(cellRange-1)
-                                    # to simulate temperature to weight matrix, this is used only for layer except Conv1
+                                    # to simulate temperature to weight matrix, this is moved to later
                                     
-                                    remainderQ = (upper-lower)*(remainder-0)+(cellRange-1)*lower   # weight cannot map to 0, but to Gmin
-                                    remainderQ = remainderQ + remainderQ*torch.from_numpy(variation).cuda()
+                                    # remainderQ = (upper-lower)*(remainder-0)+(cellRange-1)*lower   # weight cannot map to 0, but to Gmin
+                                    # remainderQ = remainderQ + remainderQ*torch.from_numpy(variation).cuda()
                                     
                                     # modify to alike pytorX
                                     
                                     input_unfold = F.unfold(inputB, kernel_size=self.kernel_size,
                                     dilation=self.dilation, padding=self.padding,
                                     stride=self.stride)
-                                    weight_flatten = (remainderQ*mask).view(self.out_channels, -1)
+                                    weight_flatten = (remainder*mask).view(self.out_channels, -1)
                                     dummy_flatten = (dummyP*mask).view(self.out_channels, -1)
                                     # 2.2. add paddings
                                     weight_padded = F.pad(weight_flatten, w_pad,
@@ -673,77 +758,66 @@ class QConv2d_T(nn.Conv2d):
                                     output_crxb_standard = torch.matmul(weight_crxb, input_crxb)
                                     output_partial_crxb = torch.zeros_like(output_crxb_standard)
                                     output_dummy_crxb = torch.zeros_like(output_crxb_standard)
-                                    if self.layer_Conv == 1:
-                                        # print("self.layer_Conv = ", self.layer_Conv)
-                                        # decompose matrix multiplication, need to declare that this is only on the layer Conv1.
-                                        for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
-                                            # I_ON_impact_dummy = I_dummy_ON_map[in_0,0,0]
-                                            # I_OFF_impact_dummy = I_dummy_OFF_map[in_0,0,0]
+                                    # decompose matrix multiplication, need to declare that this is only on the layer Conv1.
+                                    for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
+                                        I_ON_impact_dummy = I_dummy_ON_map[in_0,0,0]
+                                        I_OFF_impact_dummy = I_dummy_OFF_map[in_0,0,0]
+                                        dummy_crxb[:,:,:,:] *= (I_ON_impact_dummy+I_OFF_impact_dummy)
+                                        for w_0 in range(weight_crxb.shape[0]): # w_0 is the first dimention of weight_crxb
+                                            for in_4 in range(input_crxb.shape[4]): # 1024 input vectors for the layer Conv1
+                                                # replace the ION and IOF with I with temperature impacts 
+                                                # the PE under observation is filled with I_partial, other PEs is filled with I_dummy
+                                                I_ON_partial_blocks = I_partial_ON_map[in_0,in_4]
+                                                I_OFF_partial_blocks = I_partial_OFF_map[in_0,in_4]
 
-                                            I_ON_impact_dummy = 1
-                                            I_OFF_impact_dummy = 0.1
-                                            # dummy_crxb[:,:,:,:] *= (I_ON_impact_dummy+I_OFF_impact_dummy)
-                                            dummy_crxb[:,:,:,:] *= 1
-                                            for w_0 in range(weight_crxb.shape[0]): # w_0 is the first dimention of weight_crxb
-                                                for in_4 in range(input_crxb.shape[4]): # 1024 input vectors for the layer Conv1
-                                                    # replace the ION and IOF with I with temperature impacts 
-                                                    # the PE under observation is filled with I_partial, other PEs is filled with I_dummy
-                                                    I_ON_partial_blocks = I_partial_ON_map[in_0,in_4]
-                                                    I_OFF_partial_blocks = I_partial_OFF_map[in_0,in_4]
+                                                for i_PE in range(weight_crxb.shape[1]):
+                                                    if i_PE == 8 and self.layer_Conv == 1 and self.temperature_sim == True:
+                                                        for i_block in range(I_ON_partial_blocks.shape[0]):
+                                                            weight_crxb[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:] = \
+                                                                (I_ON_partial_blocks[i_block]-I_OFF_partial_blocks[i_block])\
+                                                                *(weight_crxb[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:]-0)\
+                                                                +(cellRange-1)*I_OFF_partial_blocks[i_block]
+                                                    else:
+                                                        weight_crxb[w_0,i_PE,:,:] = (I_ON_impact_dummy-I_OFF_impact_dummy)\
+                                                            *(weight_crxb[w_0,i_PE,:,:]-0)+(cellRange-1)*I_OFF_impact_dummy
+                                                    
+                                                    
+                                                # sub_input_unsqueeze = (input_crxb[i_0,i_1,:,:,i_4]).unsqueeze(2).unsqueeze(0).unsqueeze(0)
+                                                mul_partial_crxb = torch.matmul(weight_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                mul_dummy_crxb = torch.matmul(dummy_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb/I_ON_impact_dummy
+                                                output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb/I_ON_impact_dummy
+                                    
+                                    # check the difference between standard digitally computation and the flatten model
+                                    # deviation_max = torch.max(output_crxb - output_crxb_standard).item()
+                                    # deviation_min = torch.min(output_crxb - output_crxb_standard).item()
+                                    # output_crxb_standard_max = torch.max(output_crxb_standard).item()
+                                    # output_crxb_standard_min = torch.min(output_crxb_standard).item()
+                                    # if abs(deviation_max) > 1:
+                                    #     print("deviation of mul decompose: ", deviation_max, "min: ", deviation_min, " max of standard: ", output_crxb_standard_max, " min: ", output_crxb_standard_min)
 
-                                                    for i_PE in range(weight_crxb.shape[1]):
-                                                        if i_PE == 8 and self.temperature_sim == True:
-                                                            for i_block in range(I_ON_partial_blocks.shape[0]):
-                                                                weight_crxb[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:] = \
-                                                                    (I_ON_partial_blocks[i_block]-I_OFF_partial_blocks[i_block])\
-                                                                    *(weight_crxb[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:]-0)\
-                                                                    +(cellRange-1)*I_OFF_partial_blocks[i_block]
-                                                        else:
-                                                            # weight_crxb[w_0,i_PE,:,:] = (I_ON_impact_dummy-I_OFF_impact_dummy)\
-                                                            #     *(weight_crxb[w_0,i_PE,:,:]-0)+(cellRange-1)*I_OFF_impact_dummy
-                                                            weight_crxb[w_0,i_PE,:,:] = (I_ON_impact_dummy)*(weight_crxb[w_0,i_PE,:,:]-0)
-                                                        
-                                                    # sub_input_unsqueeze = (input_crxb[i_0,i_1,:,:,i_4]).unsqueeze(2).unsqueeze(0).unsqueeze(0)
-                                                    mul_partial_crxb = torch.matmul(weight_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
-                                                    mul_dummy_crxb = torch.matmul(dummy_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
-                                                    # output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb/I_ON_impact_dummy
-                                                    # output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb/I_ON_impact_dummy
-
-                                                    # move the divider to each image computation, which is supposed to greatly incerease the overhead.
-                                                    output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb/I_ON_impact_dummy/(1-1/onoffratio)
-                                                    output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb/I_ON_impact_dummy/(1-1/onoffratio)
-                                        # check the difference between standard digitally computation and the flatten model
-                                        # deviation_max = torch.max(output_crxb - output_crxb_standard).item()
-                                        # deviation_min = torch.min(output_crxb - output_crxb_standard).item()
-                                        # output_crxb_standard_max = torch.max(output_crxb_standard).item()
-                                        # output_crxb_standard_min = torch.min(output_crxb_standard).item()
-                                        # if abs(deviation_max) > 1:
-                                        #     print("deviation of mul decompose: ", deviation_max, "min: ", deviation_min, " max of standard: ", output_crxb_standard_max, " min: ", output_crxb_standard_min)
-
-                                        output_partial_sum = torch.sum(output_partial_crxb, dim=2)
-                                        outputPartial = output_partial_sum.view(output_partial_sum.shape[0],
-                                                                output_partial_sum.shape[1] * output_partial_sum.shape[2],
-                                                                self.h_out,
-                                                                self.w_out).index_select(dim=1, index=self.nchout_index)
-                                        output_dummy_sum = torch.sum(output_dummy_crxb, dim=2)
-                                        outputDummyPartial = output_dummy_sum.view(output_dummy_sum.shape[0],
-                                                                output_dummy_sum.shape[1] * output_dummy_sum.shape[2],
-                                                                self.h_out,
-                                                                self.w_out).index_select(dim=1, index=self.nchout_index)
-                                    else: # other layers is modeled in digital mode
-                                        outputPartial= F.conv2d(inputB, remainderQ*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
-                                        outputDummyPartial= F.conv2d(inputB, dummyP*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
+                                    output_partial_sum = torch.sum(output_partial_crxb, dim=2)
+                                    outputPartial = output_partial_sum.view(output_partial_sum.shape[0],
+                                                            output_partial_sum.shape[1] * output_partial_sum.shape[2],
+                                                            self.h_out,
+                                                            self.w_out).index_select(dim=1, index=self.nchout_index)
+                                    output_dummy_sum = torch.sum(output_dummy_crxb, dim=2)
+                                    outputDummyPartial = output_dummy_sum.view(output_dummy_sum.shape[0],
+                                                            output_dummy_sum.shape[1] * output_dummy_sum.shape[2],
+                                                            self.h_out,
+                                                            self.w_out).index_select(dim=1, index=self.nchout_index)
+                                    
                                     # outputPartial *= 2.8
                                     # end of pytorx convolutional computation
-                                    
+
+                                    # outputPartial= F.conv2d(inputB, remainderQ*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
+                                    # outputDummyPartial= F.conv2d(inputB, dummyP*mask, self.bias, self.stride, self.padding, self.dilation, self.groups)
                                     # Add ADC quanization effects here !!!
                                     outputPartialQ = wage_quantizer.LinearQuantizeOut(outputPartial, self.ADCprecision)
                                     outputDummyPartialQ = wage_quantizer.LinearQuantizeOut(outputDummyPartial, self.ADCprecision)
                                     scaler = cellRange**k
-                                    # outputSP = outputSP + outputPartialQ*scaler*2/(1-1/onoffratio)
-                                    # outputD = outputD + outputDummyPartialQ*scaler*2/(1-1/onoffratio)
-                                    outputSP = outputSP + outputPartialQ*scaler*2
-                                    outputD = outputD + outputDummyPartialQ*scaler*2
+                                    outputSP = outputSP + outputPartialQ*scaler*2/(1-1/onoffratio)
+                                    outputD = outputD + outputDummyPartialQ*scaler*2/(1-1/onoffratio)
                                 # !!! Important !!! the dummy need to be multiplied by a ratio
                                 outputSP = outputSP - outputD  # minus dummy column
                                 # outputSP /= (upper) # here upper is the ON conductance, a small number in 1e-5 magnitude
