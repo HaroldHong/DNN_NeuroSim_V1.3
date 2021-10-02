@@ -70,13 +70,18 @@ if args.cuda:
 	torch.cuda.manual_seed(args.seed)
 
 # temperature recorded by 3d-ice. 
+temperatures_500images_pes = []; temperatures_top30images_pes = []
 # input0, ConV1, 8th PE
-indexs_top30_t_range = [391,189,244,235,297,368,363,44,67,406,206,472,447,286,310,298,245,22,176,276,477,414,497,202,154,283,364,54,45,132]
+indexs_top30_t_range = [14,475,214,274, 28,100, 56,145,314,258,173,280,371,436,410, 59,196,261,432,462,265,367,490,217,0,183,17,294,47,369]
 # take 15 images to reduce execution time
-indexs_high_t_range = indexs_top30_t_range[0:15]
-temperatures_500images = pd.read_csv("CORE_DIE_woDRAM_80ns_mlt128x512_avg_pe8_woblockexchange_originalcode_input0.csv", low_memory=False,encoding="utf-8-sig") 
-temperatures_top30images = temperatures_500images[temperatures_500images['i_image'].isin(indexs_high_t_range)]
+indexs_high_t_range = indexs_top30_t_range[0:30]
+for i_pe in range(9):
+    temperatures_500images_pe = pd.read_csv('CORE_DIE_woDRAM_80ns_mlt128x512_avg_pe{}_woblockexchange_originalcode.csv'.format(i_pe), low_memory=False,encoding="utf-8-sig") 
+    temperatures_500images_pes.append(temperatures_500images_pe)
+    temperatures_top30images_pes.append(temperatures_500images_pe[temperatures_500images_pe['i_image'].isin(indexs_high_t_range)])
+    print("temperature of pe ",i_pe," has loaded")
 
+temperatures_top30images = temperatures_top30images_pes[2]
 
 # data loader and model
 assert args.dataset in ['cifar10', 'cifar100', 'imagenet'], args.dataset
@@ -94,7 +99,7 @@ assert args.model in ['VGG8', 'DenseNet40', 'ResNet18'], args.model
 if args.model == 'VGG8':
     from models import VGG
     model_path = './log/VGG8.pth'   # WAGE mode pretrained model
-    modelCF = VGG.vgg8(args = args, logger=logger,indexs_high_t_range = indexs_high_t_range, temperatures_images = temperatures_top30images, pretrained = model_path)
+    modelCF = VGG.vgg8(args = args, logger=logger,indexs_high_t_range = indexs_high_t_range, temperatures_images_pes = temperatures_top30images_pes, pretrained = model_path)
 elif args.model == 'DenseNet40':
     from models import DenseNet
     model_path = './log/DenseNet40.pth'     # WAGE mode pretrained model

@@ -75,9 +75,7 @@ class QConv2d(nn.Conv2d):
         weight = weight1 + (wage_quantizer.Q(weight1,self.wl_weight) -weight1).detach()
         outputOrignal= F.conv2d(input, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
-        print("\nself.weight.shape: ", self.weight.shape)
-        print("weight1.shape: ", weight1.shape)
-        print("weight.shape: ", weight.shape, ", self.subArray = ", self.subArray)
+        print("\nweight.shape: ", weight.shape, ", self.subArray = ", self.subArray)
         print("input.shape: ", input.shape, ", outputOrignal.shape = ", outputOrignal.shape)
         bitWeight = int(self.wl_weight)
         bitActivation = int(self.wl_input)
@@ -387,12 +385,12 @@ class QConv2d(nn.Conv2d):
         
         return output
 
-# Quantized Convolutional layer with Temperature impacts. Temperature recordings are in temperatures_images
+# Quantized Convolutional layer with Temperature impacts. Temperature recordings are in temperatures_images_pes
 class QConv2d_T(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=0, dilation=1, groups=1, bias=False,logger = None,clip_weight = False,wage_init=False,quantize_weight= False,clip_output =False,quantize_output = False,
                  wl_input =8,wl_activate=8,wl_error=8,wl_weight= 8,inference=0,onoffratio=10,cellBit=1,subArray=128,ADCprecision=5,vari=0,t=0,v=0,detect=0,target=0,debug = 0, name = 'Qconv',
-                 model = None, layer_Conv = 0, indexs_high_t_range=None, temperatures_images = None):
+                 model = None, layer_Conv = 0, indexs_high_t_range=None, temperatures_images_pes = None):
         super(QConv2d_T, self).__init__(in_channels, out_channels, kernel_size,
                                       stride, padding, dilation, groups, bias)
         self.logger = logger
@@ -445,11 +443,11 @@ class QConv2d_T(nn.Conv2d):
         self.nchout_index = torch.arange(self.out_channels).cuda()
 
         # Temperature recordings of selected images, Conv layer 1 and 8th PE by default
-        self.temperature_sim = False
+        self.temperature_sim = True
         self.indexs_high_t_range = indexs_high_t_range
-        self.temperatures_images = temperatures_images
+        self.temperatures_images_pes = temperatures_images_pes
         self.numblock = 4
-        self.blocksize = self.subArray/self.numblock
+        self.blocksize = self.subArray//self.numblock
     def num_pad(self, source, target):
         crxb_index = math.ceil(source / target)
         num_padding = crxb_index * target - source
@@ -462,9 +460,7 @@ class QConv2d_T(nn.Conv2d):
         weight = weight1 + (wage_quantizer.Q(weight1,self.wl_weight) -weight1).detach()
         outputOrignal= F.conv2d(input, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
-        print("\nself.weight.shape: ", self.weight.shape)
-        print("weight1.shape: ", weight1.shape)
-        print("weight.shape: ", weight.shape, ", self.subArray = ", self.subArray)
+        print("\nweight.shape: ", weight.shape, ", self.subArray = ", self.subArray)
         print("input.shape: ", input.shape, ", outputOrignal.shape = ", outputOrignal.shape)
         bitWeight = int(self.wl_weight)
         bitActivation = int(self.wl_input)
@@ -508,39 +504,51 @@ class QConv2d_T(nn.Conv2d):
             print("w_pad:", w_pad, ", input_pad:", input_pad, "int(weight.shape[1]/self.subArray) = ", int(weight.shape[1]/self.subArray))
             # load in temperature maps of 8th PE
             if self.layer_Conv == 1:
-                T_map_1tile = np.zeros((input.shape[0],input.shape[2]*input.shape[3],4))
-                for index, i_image in enumerate(self.indexs_high_t_range):
-                    image = self.temperatures_images[self.temperatures_images['i_image']==i_image]
-                    # indexs_high_t_range selects top 30 images in a decreasing order
-                    T_map_1tile[index,:,0] = image[['CROSSBAR_BTM0Q(K)']].values.T[0]
-                    T_map_1tile[index,:,1] = image[['CROSSBAR_BTM1Q(K)']].values.T[0]
-                    T_map_1tile[index,:,2] = image[['CROSSBAR_TOP2Q(K)']].values.T[0]
-                    T_map_1tile[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
-                # first compute the current of dummy matrix
-                T_map_dummy_min = np.min(T_map_1tile, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
-                # we take the first flatten feature of each image as the baseline dummy temperature, 
-                # i.e. computations within an image share a common dummy matrix, i.e. temperature sensors update per image
-                T_map_dummy_1d = T_map_dummy_min[:,0]
-                # repeat and expand the array from dimention(n_images) to (n_images, n_flatten_features, n_blocks)
-                T_map_dummy = np.expand_dims(np.expand_dims(T_map_dummy_1d,1).repeat(T_map_1tile.shape[1],axis=1),2).repeat(T_map_1tile.shape[2],axis=2)
-                # call multiprocessors to compute the affected current
-                pool = Pool()
-                I_dummy_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_dummy.flatten())
-                pool.close()
-                pool.join()
-                I_dummy_arr = np.array(I_dummy_list)
-                print("\nI_dummy_arr.shape: ", I_dummy_arr.shape)
-                print("weight.shape: ", weight.shape)
-                I_dummy_ON_map = I_dummy_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
-                I_dummy_OFF_map = I_dummy_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+                I_partial_ON_map_pes = []; I_partial_OFF_map_pes = []; I_dummy_ON_map_pes = []; I_dummy_OFF_map_pes = []
+                for i_pe in range(9):
+                    T_map_pe = np.zeros((input.shape[0],input.shape[2]*input.shape[3],4))
+                    temperatures_images_pe = self.temperatures_images_pes[i_pe]
+                    for index, i_image in enumerate(self.indexs_high_t_range):
+                        image = temperatures_images_pe[temperatures_images_pe['i_image']==i_image]
+                        # indexs_high_t_range selects top 30 images in a decreasing order
+                        T_map_pe[index,:,0] = image[['CROSSBAR_BTM0Q(K)']].values.T[0]
+                        T_map_pe[index,:,1] = image[['CROSSBAR_BTM1Q(K)']].values.T[0]
+                        T_map_pe[index,:,2] = image[['CROSSBAR_TOP2Q(K)']].values.T[0]
+                        T_map_pe[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
+                    # first compute the current of dummy matrix
+                    T_map_dummy_min = np.min(T_map_pe, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
+                    # we take the first flatten feature of each image as the baseline dummy temperature, 
+                    # i.e. computations within an image share a common dummy matrix, i.e. temperature sensors update per image
+                    T_map_dummy_1d = T_map_dummy_min[:,0]
+                    # repeat and expand the array from dimention(n_images) to (n_images, n_flatten_features, n_blocks)
+                    T_map_dummy = np.expand_dims(np.expand_dims(T_map_dummy_1d,1).repeat(T_map_pe.shape[1],axis=1),2).repeat(T_map_pe.shape[2],axis=2)
+                    # call multiprocessors to compute the affected current
+                    pool = Pool()
+                    I_dummy_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_dummy.flatten())
+                    pool.close()
+                    pool.join()
+                    I_dummy_arr = np.array(I_dummy_list)
+                    # print("\nI_dummy_arr.shape: ", I_dummy_arr.shape)
+                    # print("weight.shape: ", weight.shape)
+                    I_dummy_ON_map = I_dummy_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+                    I_dummy_OFF_map = I_dummy_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
 
-                pool = Pool()
-                I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_1tile.flatten())
-                pool.close()
-                pool.join()
-                I_partial_arr = np.array(I_partial_list)
-                I_partial_ON_map = I_partial_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
-                I_partial_OFF_map = I_partial_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+                    pool = Pool()
+                    I_partial_list = pool.map(I_V_T_smallSim.I_V_T_sim_fixedV, T_map_pe.flatten())
+                    pool.close()
+                    pool.join()
+                    I_partial_arr = np.array(I_partial_list)
+                    I_partial_ON_map = I_partial_arr[:,0].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+                    I_partial_OFF_map = I_partial_arr[:,1].reshape(input.shape[0],input.shape[2]*input.shape[3],self.numblock)
+
+                    I_partial_ON_map_pes.append(I_partial_ON_map)
+                    I_partial_OFF_map_pes.append(I_partial_OFF_map)
+                    I_dummy_ON_map_pes.append(I_dummy_ON_map)
+                    I_dummy_OFF_map_pes.append(I_dummy_OFF_map)
+                I_dummy_ON_map_pes = torch.from_numpy(np.asarray(I_dummy_ON_map_pes)).cuda()
+                I_dummy_OFF_map_pes = torch.from_numpy(np.asarray(I_dummy_OFF_map_pes)).cuda()
+                I_partial_ON_map_pes = torch.from_numpy(np.asarray(I_partial_ON_map_pes)).cuda()
+                I_partial_OFF_map_pes = torch.from_numpy(np.asarray(I_partial_OFF_map_pes)).cuda()
             
             
             # generate impacts according to temperature maps
@@ -678,9 +686,9 @@ class QConv2d_T(nn.Conv2d):
                                                                     self.crxb_row, self.subArray).transpose(1, 2)
                                     # G_crxb = self.w2g(weight_crxb)
 
-                                    # if z==s==k==0:
-                                    #     print("\n inputB.shape: ", inputB.shape, "flatten and unfold \ninput_unfold.shape: ", input_unfold.shape, " weight_flatten.shape: ", weight_flatten.shape, 
-                                    #     " input_crxb.shape: ", input_crxb.shape, " weight_crxb.shape: ", weight_crxb.shape) #, " G_crxb.shape: ", G_crxb.shape)
+                                    if z==s==k==0:
+                                        print("\n inputB.shape: ", inputB.shape, "flatten and unfold \ninput_unfold.shape: ", input_unfold.shape, " weight_flatten.shape: ", weight_flatten.shape, 
+                                        " input_crxb.shape: ", input_crxb.shape, " weight_crxb.shape: ", weight_crxb.shape) #, " G_crxb.shape: ", G_crxb.shape)
 
                                     # Start decomposation
                                     
@@ -688,21 +696,37 @@ class QConv2d_T(nn.Conv2d):
                                     output_partial_crxb = torch.zeros_like(output_crxb_standard)
                                     output_dummy_crxb = torch.zeros_like(output_crxb_standard)
                                     if self.layer_Conv == 1:
+                                        I_ON_impact_dummy_pes = torch.zeros(dummy_crxb.shape[1]).cuda()
+                                        I_OFF_impact_dummy_pes = torch.zeros(dummy_crxb.shape[1]).cuda()
+                                        upper_impact_pes = torch.zeros(dummy_crxb.shape[1]).cuda()
+                                        lower_impact_pes = torch.zeros(dummy_crxb.shape[1]).cuda()
+                                        onoffratio_impact_pes = torch.zeros(dummy_crxb.shape[1]).cuda()
                                         # print("self.layer_Conv = ", self.layer_Conv)
                                         # decompose matrix multiplication, need to declare that this is only on the layer Conv1.
                                         for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
-                                            I_ON_impact_dummy = I_dummy_ON_map[in_0,0,0]
-                                            I_OFF_impact_dummy = I_dummy_OFF_map[in_0,0,0]
-                                            
-                                            upper_impact = I_ON_impact_dummy
-                                            lower_impact = I_OFF_impact_dummy
-                                            onoffratio_impact = upper_impact/lower_impact
-
-                                            # I_ON_impact_dummy = 1
-                                            # I_OFF_impact_dummy = 0.1
                                             dummy_crxb_impact = dummy_crxb.clone()
+                                            I_ON_impact_dummy_pes = I_dummy_ON_map_pes[:,in_0,0,0]
+                                            I_OFF_impact_dummy_pes = I_dummy_OFF_map_pes[:,in_0,0,0]
+                                            # I_ON_impact_dummy_pes *= 0
+                                            # I_OFF_impact_dummy_pes *= 0
+
+                                            # I_ON_impact_dummy_pes += 1
+                                            # I_OFF_impact_dummy_pes += 0.1
+
+                                            upper_impact_pes = I_ON_impact_dummy_pes; lower_impact_pes = I_OFF_impact_dummy_pes
+                                            onoffratio_impact_pes = upper_impact_pes/lower_impact_pes
                                             
-                                            dummy_crxb_impact[:,:,:,:] *= (I_ON_impact_dummy+I_OFF_impact_dummy) # Is the impacted multiplied multi times?
+
+                                            for i_PE in range(dummy_crxb.shape[1]):
+                                                # I_ON_impact_dummy_pes[i_PE] = I_dummy_ON_map_pes[i_PE,in_0,0,0]
+                                                # I_OFF_impact_dummy_pes[i_PE] = I_dummy_OFF_map_pes[i_PE,in_0,0,0]
+                                                # upper_impact_pes[i_PE] = I_ON_impact_dummy_pes[i_PE]
+                                                # lower_impact_pes[i_PE] = I_OFF_impact_dummy_pes[i_PE]
+                                                # onoffratio_impact_pes[i_PE] = upper_impact_pes[i_PE]/lower_impact_pes[i_PE]
+                                                # I_ON_impact_dummy = 1
+                                                # I_OFF_impact_dummy = 0.1
+                                                
+                                                dummy_crxb_impact[:,i_PE,:,:] *= (I_ON_impact_dummy_pes[i_PE]+I_OFF_impact_dummy_pes[i_PE]) # Is the impacted multiplied multi times?
                                             # dummy_crxb_impact[:,:,:,:] *= 1
                                             # def pool_matmul_crxb(w_0):
                                             #     output_partial_crxb_local = torch.zeros_like(output_crxb_standard)
@@ -751,31 +775,56 @@ class QConv2d_T(nn.Conv2d):
                                                     # replace the ION and IOF with I with temperature impacts 
                                                     # the PE under observation is filled with I_partial, other PEs is filled with I_dummy
                                                     weight_crxb_impact = weight_crxb.clone()
-                                                    I_ON_partial_blocks = I_partial_ON_map[in_0,in_4]
-                                                    I_OFF_partial_blocks = I_partial_OFF_map[in_0,in_4]
+                                                    
+                                                    I_ON_partial_blocks = I_partial_ON_map_pes[:,in_0,in_4]
+                                                    I_OFF_partial_blocks = I_partial_OFF_map_pes[:,in_0,in_4] # shape of (9,4,)
+
+                                                    mul_partial_crxb_test = torch.zeros((output_partial_crxb.shape[2], output_partial_crxb.shape[3])).cuda()
+                                                    mul_dummy_crxb_test = torch.zeros((output_dummy_crxb.shape[2], output_dummy_crxb.shape[3])).cuda()
 
                                                     for i_PE in range(weight_crxb_impact.shape[1]):
-                                                        if i_PE == 8 and self.temperature_sim == True:
-                                                            for i_block in range(I_ON_partial_blocks.shape[0]):
+                                                        if self.temperature_sim == True: # first assume PEs are identical in temperature
+                                                        # if i_PE == 8 and self.temperature_sim == True:
+                                                            for i_block in range(I_ON_partial_blocks.shape[1]):
+                                                                # print("I_ON_partial_blocks.shape: ", I_ON_partial_blocks.shape)
+                                                                # print("weight_crxb_impact.shape: ", weight_crxb_impact.shape)
                                                                 weight_crxb_impact[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:] = \
-                                                                    (I_ON_partial_blocks[i_block]-I_OFF_partial_blocks[i_block])\
-                                                                    *(weight_crxb_impact[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:]-0)\
-                                                                    +(cellRange-1)*I_OFF_partial_blocks[i_block]
+                                                                    (weight_crxb_impact[w_0,i_PE,self.blocksize*i_block:self.blocksize*(i_block+1),:]-0)\
+                                                                    *(I_ON_partial_blocks[i_PE,i_block]-I_OFF_partial_blocks[i_PE,i_block])\
+                                                                    +(cellRange-1)*I_OFF_partial_blocks[i_PE,i_block]
                                                         else:
-                                                            weight_crxb_impact[w_0,i_PE,:,:] = (upper_impact-lower_impact)\
-                                                                *(weight_crxb_impact[w_0,i_PE,:,:]-0)+(cellRange-1)*lower_impact
+                                                            weight_crxb_impact[w_0,i_PE,:,:] = (upper_impact_pes[i_PE]-lower_impact_pes[i_PE])\
+                                                                *(weight_crxb_impact[w_0,i_PE,:,:]-0)+(cellRange-1)*lower_impact_pes[i_PE]
+
+                                                        weight_crxb_impact_test = weight_crxb_impact.clone()
+                                                        dummy_crxb_impact_test = dummy_crxb_impact.clone()
+                                                        weight_crxb_impact_test[w_0,i_PE,:,:] /= (I_ON_impact_dummy_pes[i_PE]*(1-1/onoffratio_impact_pes[i_PE])*0.5)
+                                                        dummy_crxb_impact_test[w_0,i_PE,:,:] /= (I_ON_impact_dummy_pes[i_PE]*(1-1/onoffratio_impact_pes[i_PE])*0.5)
                                                             # weight_crxb_impact[w_0,i_PE,:,:] = (I_ON_impact_dummy)*(weight_crxb_impact[w_0,i_PE,:,:]-0)
+                                                        mul_partial_crxb_test[i_PE,:] = torch.matmul(weight_crxb_impact_test[w_0,i_PE,:,:]*mask_crxb[w_0,i_PE,:,:], input_crxb[in_0,0,i_PE,:,in_4].unsqueeze(1)).squeeze(1)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                        mul_dummy_crxb_test[i_PE,:] = torch.matmul(dummy_crxb_impact_test[w_0,i_PE,:,:]*mask_crxb[w_0,i_PE,:,:], input_crxb[in_0,0,i_PE,:,in_4].unsqueeze(1)).squeeze(1)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                    
                                                         
                                                     # sub_input_unsqueeze = (input_crxb[i_0,i_1,:,:,i_4]).unsqueeze(2).unsqueeze(0).unsqueeze(0)
                                                     # *mask_crxb[w_0,:,:,:]
-                                                    mul_partial_crxb = torch.matmul(weight_crxb_impact[w_0,:,:,:]*mask_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
-                                                    mul_dummy_crxb = torch.matmul(dummy_crxb_impact[w_0,:,:,:]*mask_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                    # mul_partial_crxb = torch.matmul(weight_crxb_impact[w_0,:,:,:]*mask_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+                                                    # mul_dummy_crxb = torch.matmul(dummy_crxb_impact[w_0,:,:,:]*mask_crxb[w_0,:,:,:], input_crxb[in_0,0,:,:,in_4].unsqueeze(2)).squeeze(2)# torch.matmul(weight_crxb, sub_input_unsqueeze)
+
+                                                    
+                                                    # mul_partial_diff_test = mul_partial_crxb_test - mul_partial_crxb*2/(I_ON_impact_dummy_pes[0])/(1-1/onoffratio_impact_pes[0])
+                                                    # mul_dummy_diff_test = mul_dummy_crxb_test - mul_dummy_crxb*2/(I_ON_impact_dummy_pes[0])/(1-1/onoffratio_impact_pes[0])
+
+                                                    # print("mul_partial_diff_test: ", mul_partial_diff_test)
+                                                    # print("mul_dummy_diff_test: ", mul_dummy_diff_test)
                                                     # output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb/I_ON_impact_dummy
                                                     # output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb/I_ON_impact_dummy
 
                                                     # move the divider to each image computation, which is supposed to greatly incerease the overhead.
-                                                    output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb/(I_ON_impact_dummy)/(1-1/onoffratio_impact)*2
-                                                    output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb/(I_ON_impact_dummy)/(1-1/onoffratio_impact)*2
+                                                    # output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb*2/(I_ON_impact_dummy_pes[0])/(1-1/onoffratio_impact_pes[0])
+                                                    # output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb*2/(I_ON_impact_dummy_pes[0])/(1-1/onoffratio_impact_pes[0])
+                                                    output_partial_crxb[in_0,w_0,:,:,in_4] += mul_partial_crxb_test #*2/(I_ON_impact_dummy_pes[0])/(1-1/onoffratio_impact_pes[0])
+                                                    output_dummy_crxb[in_0,w_0,:,:,in_4] += mul_dummy_crxb_test #*2/(I_ON_impact_dummy_pes[0])/(1-1/onoffratio_impact_pes[0])
+                                                    # print("output_partial_crxb.shape: ",output_partial_crxb.shape, "mul_partial_crxb.shape", mul_partial_crxb_test.shape)
                                         # check the difference between standard digitally computation and the flatten model
                                         # deviation_max = torch.max(output_crxb - output_crxb_standard).item()
                                         # deviation_min = torch.min(output_crxb - output_crxb_standard).item()

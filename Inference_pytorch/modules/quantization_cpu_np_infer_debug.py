@@ -388,7 +388,7 @@ class QConv2d_T(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=0, dilation=1, groups=1, bias=False,logger = None,clip_weight = False,wage_init=False,quantize_weight= False,clip_output =False,quantize_output = False,
                  wl_input =8,wl_activate=8,wl_error=8,wl_weight= 8,inference=0,onoffratio=10,cellBit=1,subArray=128,ADCprecision=5,vari=0,t=0,v=0,detect=0,target=0,debug = 0,
-                 name = 'Qconv', model = None, layer_Conv = 0, indexs_high_t_range=None, temperatures_images = None):
+                 name = 'Qconv', model = None, layer_Conv = 0, indexs_high_t_range=None, temperatures_images_pes = None):
         super(QConv2d_T, self).__init__(in_channels, out_channels, kernel_size,
                                       stride, padding, dilation, groups, bias)
         self.logger = logger
