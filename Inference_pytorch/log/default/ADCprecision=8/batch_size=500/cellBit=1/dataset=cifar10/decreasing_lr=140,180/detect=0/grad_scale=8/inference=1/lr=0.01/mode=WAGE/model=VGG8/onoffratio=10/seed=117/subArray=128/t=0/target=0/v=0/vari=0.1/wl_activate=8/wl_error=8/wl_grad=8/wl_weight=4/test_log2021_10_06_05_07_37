@@ -26,4 +26,4 @@ v: 0
 detect: 0
 target: 0
 ========================================
-Test set: Average loss: 0.0026, Accuracy: 26/10000 (0%)
+Test set: Average loss: 0.0113, Accuracy: 3/10000 (0%)

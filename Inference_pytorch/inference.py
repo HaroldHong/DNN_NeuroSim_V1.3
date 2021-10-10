@@ -71,10 +71,14 @@ if args.cuda:
 
 # temperature recorded by 3d-ice. 
 temperatures_500images_pes = []; temperatures_top30images_pes = []
-# input0, ConV1, 8th PE
-indexs_top30_t_range = [14,475,214,274, 28,100, 56,145,314,258,173,280,371,436,410, 59,196,261,432,462,265,367,490,217,0,183,17,294,47,369]
+# # top30 activation difference
+# indexs_top30_t_range = [14,475,214,274, 28,100, 56,145,314,258,173,280,371,436,410, 59,196,261,432,462,265,367,490,217,0,183,17,294,47,369]
+# top30 temperature difference
+indexs_top30_t_range = [189,44,391,297, 368,244, 176,235,392,236,67,245,363,472,477, 298,369,407,85,406,276,68,447,364,310,90,45,1,207,414,0]
+indexs_range = range(500)
 # take 15 images to reduce execution time
-indexs_high_t_range = indexs_top30_t_range[0:30]
+# indexs_high_t_range = indexs_top30_t_range[0:15]
+indexs_high_t_range = indexs_range[:]
 for i_pe in range(9):
     temperatures_500images_pe = pd.read_csv('CORE_DIE_woDRAM_80ns_mlt128x512_avg_pe{}_woblockexchange_originalcode.csv'.format(i_pe), low_memory=False,encoding="utf-8-sig") 
     temperatures_500images_pes.append(temperatures_500images_pe)
