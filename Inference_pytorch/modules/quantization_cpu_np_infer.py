@@ -444,7 +444,7 @@ class QConv2d_T(nn.Conv2d):
 
         # Temperature recordings of selected images, Conv layer 1 and 8th PE by default
         self.temperature_sim = True
-        self.hardware_mode = False
+        self.hardware_mode = True
         self.indexs_high_t_range = indexs_high_t_range
         self.temperatures_images_pes = temperatures_images_pes
         self.numblock = 4
@@ -516,7 +516,8 @@ class QConv2d_T(nn.Conv2d):
                         T_map_pe[index,:,1] = image[['CROSSBAR_BTM1Q(K)']].values.T[0]
                         T_map_pe[index,:,2] = image[['CROSSBAR_TOP2Q(K)']].values.T[0]
                         T_map_pe[index,:,3] = image[['CROSSBAR_TOP3Q(K)']].values.T[0]
-                    print("PE ", i_pe, " T_map_pe:", T_map_pe)
+                    if i_pe == 8:
+                        print("PE ", i_pe, " T_map_pe:", T_map_pe)
                     # first compute the current of dummy matrix
                     T_map_dummy_min = np.min(T_map_pe, 2) # we first set the dummy matrix as minimum temperature of xbar_blocks
                     # we take the first flatten feature of each image as the baseline dummy temperature, 
@@ -551,8 +552,9 @@ class QConv2d_T(nn.Conv2d):
                 I_dummy_OFF_map_pes = torch.from_numpy(np.asarray(I_dummy_OFF_map_pes)).float().cuda()
                 I_partial_ON_map_pes = torch.from_numpy(np.asarray(I_partial_ON_map_pes)).float().cuda()
                 I_partial_OFF_map_pes = torch.from_numpy(np.asarray(I_partial_OFF_map_pes)).float().cuda()
-                for i_pe in range(I_partial_ON_map_pes.shape[0]):
-                    print('\nI_partial_ON_map_pes/I_partial_OFF_map_pes [pe {}]: '.format(i_pe),I_partial_ON_map_pes/I_partial_OFF_map_pes)
+                # for i_pe in range(I_partial_ON_map_pes.shape[0]):
+                i_pe=8
+                print('\nI_partial_ON_map_pes/I_partial_OFF_map_pes [pe {}]: '.format(i_pe),I_partial_ON_map_pes/I_partial_OFF_map_pes)
                 
 
                 # print("")
@@ -712,14 +714,14 @@ class QConv2d_T(nn.Conv2d):
                                         # decompose matrix multiplication, need to declare that this is only on the layer Conv1.
                                         for in_0 in range(input_crxb.shape[0]): # in_0 is batch size of images
                                             dummy_crxb_impact = dummy_crxb.clone()
-                                            # I_ON_impact_dummy_pes = I_dummy_ON_map_pes[:,in_0,0,0]
-                                            # I_OFF_impact_dummy_pes = I_dummy_OFF_map_pes[:,in_0,0,0]
+                                            I_ON_impact_dummy_pes = I_dummy_ON_map_pes[:,in_0,0,0]
+                                            I_OFF_impact_dummy_pes = I_dummy_OFF_map_pes[:,in_0,0,0]
 
                                             # I_ON_impact_dummy_pes = I_dummy_ON_map_pes[:,-1,0,0] # we put NO.0 image at the end of the list
                                             # I_OFF_impact_dummy_pes = I_dummy_OFF_map_pes[:,-1,0,0]
                                             stride = 10
-                                            I_ON_impact_dummy_pes = I_dummy_ON_map_pes[:,in_0//stride*stride,0,0] # take a image per stride as the dummy
-                                            I_OFF_impact_dummy_pes = I_dummy_OFF_map_pes[:,in_0//stride*stride,0,0]
+                                            I_ON_impact_dummy_pes_base = I_dummy_ON_map_pes[:,in_0//stride*stride,0,0] # take a image per stride as the dummy
+                                            I_OFF_impact_dummy_pes_base = I_dummy_OFF_map_pes[:,in_0//stride*stride,0,0]
 
                                             # I_ON_impact_dummy_pes *= 0
                                             # I_OFF_impact_dummy_pes *= 0
@@ -740,7 +742,7 @@ class QConv2d_T(nn.Conv2d):
                                                 # I_ON_impact_dummy = 1
                                                 # I_OFF_impact_dummy = 0.1
                                                 
-                                                dummy_crxb_impact[:,i_PE,:,:] *= (I_ON_impact_dummy_pes[i_PE]+I_OFF_impact_dummy_pes[i_PE]) 
+                                                dummy_crxb_impact[:,i_PE,:,:] *= (I_ON_impact_dummy_pes_base[i_PE]+I_OFF_impact_dummy_pes_base[i_PE]) 
                                             # dummy_crxb_impact[:,:,:,:] *= 1
                                             # def pool_matmul_crxb(w_0):
                                             #     output_partial_crxb_local = torch.zeros_like(output_crxb_standard)
@@ -1154,4 +1156,3 @@ class QLinear(nn.Linear):
         output = wage_quantizer.WAGEQuantizer_f(output,self.wl_activate, self.wl_error)
         
         return output
-
