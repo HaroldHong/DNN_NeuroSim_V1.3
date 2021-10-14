@@ -14,7 +14,7 @@ NormalizedMax = pow(2, numColPerSynapse)
 
 RealMax = 1
 RealMin = -1
-q = 1.6e-19; h = 4.135667e-15; k = 8.61733034e-5; rou_w = 3e-2; N=2; f = 0.1 # h is Planck constant in eVs, k is Boltzmann constant in eV*K^-1
+q = 1.6e-19; h = 4.135667e-15; k = 8.61733034e-5; rou_w = 3e-2; N=5; f = 0.1 # h is Planck constant in eVs, k is Boltzmann constant in eV*K^-1
 def I_V_T_sim(V, T):
     
     alpha = 2.80; phi_0 = 1.14; gamma = 0.95; theta = 7.3e-4; T0 = 300; V0=1e-9 # parameters for OFF-state without cycling,
@@ -44,7 +44,11 @@ def I_V_T_sim(V, T):
 
 def I_V_T_sim_fixedV(T):
     V = 0.2
-    alpha = 2.80; phi_0 = 1.14; gamma = 0.95; theta = 7.3e-4; T0 = 300; V0=1e-9 # parameters for OFF-state without cycling,
+    # alpha = 2.80; phi_0 = 1.14; 
+    # alpha = 5.11; phi_0 = 0.77; 
+    alpha = 6.55; phi_0 = 0.67; 
+    gamma = 0.95; theta = 7.3e-4; T0 = 293; V0=1e-9 # parameters for OFF-state without cycling,
+    
     phi_V0_T0 = phi_0 - gamma*V0 - theta*T0; phi_V = phi_0 - gamma*V; phi_V_T = phi_0 - gamma*V - theta*T; G_0 = 1/12.9*1e-3
     R_OFF_target = 10/G_0
     # model of 2014' JAP "Multi-scale quantum point..."
@@ -58,7 +62,8 @@ def I_V_T_sim_fixedV(T):
 
     # I_OFF = 2.0*q/(h*alpha)*math.exp(-alpha*phi_V_T)/np.sinc(alpha*k*T)*(1-math.exp(-alpha*V))
     I_OFF = 2.0*q/(h*alpha)*math.exp(-alpha*phi_V_T)*(1-math.exp(-alpha*V))
-    I_LHRS = 2*q/h*N*(V+1/alpha*math.log((1+math.exp(alpha*(phi_0-0.9*V)))/(1+math.exp(alpha*(phi_0+(1-0.9)*V)))))
+    N_LHRS = 3
+    I_LHRS = 2*q/h*N_LHRS*(V+1/alpha*math.log((1+math.exp(alpha*(phi_0-0.9*V)))/(1+math.exp(alpha*(phi_0+(1-0.9)*V)))))
     RON_0 =  13e3
     R_ON_base = RON_0*(1+rou_w*(T-T0))
     I_ON_base = N*G_0/(1+N*G_0*R_ON_base)*V
